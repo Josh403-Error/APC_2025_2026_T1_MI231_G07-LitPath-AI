@@ -144,6 +144,13 @@ class FiltersView(APIView):
     def get(self, request):
         try:
             rag = RAGService.ensure_initialized()
+            # If background indexing is still running, return partial/empty
+            if RAGService.is_indexing():
+                return Response(
+                    {"subjects": [], "years": [], "indexing": True,
+                     "message": "System is indexing theses, filters will appear shortly."},
+                    status=status.HTTP_200_OK
+                )
             filters = rag.get_available_filters()
             
             return Response(filters, status=status.HTTP_200_OK)
@@ -183,7 +190,8 @@ class HealthCheckView(APIView):
                     "total_chunks": detailed_status["total_chunks"],
                     "txt_files": len(txt_files),
                     "pdf_files": len(pdf_files),
-                    "rag_initialized": True
+                    "rag_initialized": True,
+                    "indexing_in_progress": RAGService.is_indexing()
                 }
             else:
                 health_data = {
@@ -239,6 +247,18 @@ class SearchView(APIView):
             from .query_parser import extract_filters_from_query
             
             rag = RAGService.ensure_initialized()
+
+            # If background indexing is in progress, return early with a message
+            if RAGService.is_indexing():
+                return Response({
+                    "question": question,
+                    "results": [],
+                    "documents": [],
+                    "overview": "The system is currently indexing theses. Please try again in a few minutes.",
+                    "indexing": True,
+                    "total_results": 0,
+                }, status=status.HTTP_200_OK)
+
             available_filters = rag.get_available_filters()
             
             parsed = extract_filters_from_query(question, available_filters.get("subjects", []))
@@ -452,7 +472,13 @@ class StreamingSearchView(APIView):
                 )
             
             rag = RAGService.ensure_initialized()
-            
+
+            if RAGService.is_indexing():
+                return Response({
+                    "overview": "The system is currently indexing theses. Please try again in a few minutes.",
+                    "indexing": True,
+                }, status=status.HTTP_200_OK)
+
             # If search context was passed from the initial search, reuse it (no duplicate search)
             if search_context and isinstance(search_context, dict):
                 top_chunks = search_context.get("top_chunks", [])
@@ -886,19 +912,34 @@ def get_most_browsed(request):
             school = row['school']
             
             # If metadata is missing, try to get it from the RAG system
-            if (not title or title == 'Unknown') or (not author or author == 'Unknown') or (not year or year == 'Unknown') or (not school or school == 'Unknown Institution' or school == 'Unknown'):
+            if (not title or title == 'Unknown') or (not author or author == 'Unknown') or (not year or year == 'Unknown') or (not school or school in ('Unknown Institution', 'Unknown', '')):
                 try:
-                    if RAGService._initialized:
+                    if RAGService._initialized and not RAGService.is_indexing():
                         rag = RAGService()
                         # Search for the document in the RAG system by file name
                         doc_metadata = rag.get_document_metadata(row['file'])
                         if doc_metadata:
-                            title = doc_metadata.get('title', title)
-                            author = doc_metadata.get('author', author)
-                            year = doc_metadata.get('year', year)
-                            abstract = doc_metadata.get('abstract', abstract)
-                            degree = doc_metadata.get('degree', degree)
-                            school = doc_metadata.get('school', school)
+                            if not title or title == 'Unknown':
+                                title = doc_metadata.get('title', title)
+                            if not author or author == 'Unknown':
+                                author = doc_metadata.get('author', author)
+                            if not year or year == 'Unknown':
+                                year = doc_metadata.get('year', year)
+                            if not abstract:
+                                abstract = doc_metadata.get('abstract', abstract)
+                            if not degree or degree == 'Thesis':
+                                degree = doc_metadata.get('degree', degree)
+                            if not school or school in ('Unknown Institution', 'Unknown', ''):
+                                school = doc_metadata.get('school', school)
+                            # Persist the enriched metadata back to the DB
+                            try:
+                                Material.objects.filter(file=row['file']).update(
+                                    title=title, author=author, year=year,
+                                    abstract=abstract or '', degree=degree or '',
+                                    school=school or ''
+                                )
+                            except Exception:
+                                pass
                 except Exception as e:
                     print(f"Error fetching metadata for {row['file']}: {e}")
             

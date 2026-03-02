@@ -13,6 +13,7 @@ from google import genai
 import re
 import time
 import hashlib
+import threading
 from datetime import datetime
 from functools import lru_cache
 from PyPDF2 import PdfReader
@@ -191,6 +192,10 @@ class RAGService:
     
     _instance = None
     _initialized = False
+    _indexing_in_progress = False
+    _index_thread = None
+    # Bump this version to force a full re-index on next deploy
+    INDEX_VERSION = "v2-hf-api"
     
     def __new__(cls):
         if cls._instance is None:
@@ -205,8 +210,19 @@ class RAGService:
         return cls()
 
     @classmethod
+    def is_indexing(cls):
+        """Check if background indexing is in progress."""
+        return cls._indexing_in_progress
+
+    @classmethod
     def initialize(cls):
-        """Initialize the RAG system (called on first search)"""
+        """Initialize the RAG system (called on first search).
+        
+        Sets up ChromaDB + embedder immediately (fast), then checks if
+        indexing is needed.  If so, indexing runs in a **background thread**
+        so the gunicorn worker stays responsive and doesn't get killed by
+        the master's timeout.
+        """
         if cls._initialized:
             return
         cls._initialized = True
@@ -225,10 +241,8 @@ class RAGService:
             instance.collection = instance.chroma_client.get_or_create_collection("thesis_chunks")
         except Exception as e:
             print(f"[RAG] ChromaDB open failed ({e}), wiping corrupt data and recreating...")
-            # Close any partial handles
             instance.chroma_client = None
             instance.collection = None
-            # Remove the corrupt directory and recreate
             if os.path.exists(chroma_path):
                 shutil.rmtree(chroma_path, ignore_errors=True)
             os.makedirs(chroma_path, exist_ok=True)
@@ -237,25 +251,59 @@ class RAGService:
             print("[RAG] ChromaDB recreated successfully.")
 
         instance.api_key = settings.GEMINI_API_KEY
+
+        # ---- Version-based re-index check ----
+        version_file = os.path.join(chroma_path, '.index_version')
+        stored_version = ''
+        if os.path.exists(version_file):
+            with open(version_file, 'r') as vf:
+                stored_version = vf.read().strip()
+
+        needs_full_reindex = (stored_version != cls.INDEX_VERSION)
+        if needs_full_reindex:
+            print(f"[RAG] Index version mismatch (stored={stored_version!r}, current={cls.INDEX_VERSION!r}), will re-index")
+            # Wipe existing data so we start fresh
+            try:
+                instance.chroma_client.delete_collection("thesis_chunks")
+            except Exception:
+                pass
+            instance.collection = instance.chroma_client.get_or_create_collection("thesis_chunks")
+            # Also remove old indexed_files.json so all files get re-indexed
+            old_idx = os.path.join(settings.RAG_THESES_FOLDER, 'indexed_files.json')
+            if os.path.exists(old_idx):
+                os.remove(old_idx)
+
         existing_chunks = instance.collection.count()
         print(f"[RAG] Found {existing_chunks} existing chunks in database")
+
         if existing_chunks == 0:
-            pdf_files = glob.glob(os.path.join(settings.RAG_THESES_FOLDER, '*.pdf'))
+            # Need to index — do it in a background thread to avoid blocking
             txt_files = glob.glob(os.path.join(settings.RAG_THESES_FOLDER, '*.txt'))
-            if len(pdf_files) > 0:
-                print(f"[RAG] Found {len(pdf_files)} PDF files, extracting and indexing...")
-                instance.extract_and_chunk_pdfs(settings.RAG_THESES_FOLDER)
-            elif len(txt_files) > 0:
-                print(f"[RAG] Found {len(txt_files)} TXT files (no PDFs), indexing directly...")
-                instance.index_txt_files_directly(settings.RAG_THESES_FOLDER)
+            txt_files = [f for f in txt_files if 'indexed_files' not in f and 'metadata' not in f and 'generate' not in f]
+            if txt_files:
+                cls._indexing_in_progress = True
+                print(f"[RAG] Starting background indexing of {len(txt_files)} TXT files...")
+                def _bg_index():
+                    try:
+                        instance.index_txt_files_directly(settings.RAG_THESES_FOLDER)
+                        # Write version stamp on success
+                        with open(version_file, 'w') as vf:
+                            vf.write(cls.INDEX_VERSION)
+                        print(f"[RAG] Background indexing complete! Total chunks: {instance.collection.count()}")
+                    except Exception as e:
+                        print(f"[RAG] Background indexing error: {e}")
+                    finally:
+                        cls._indexing_in_progress = False
+                cls._index_thread = threading.Thread(target=_bg_index, daemon=True)
+                cls._index_thread.start()
             else:
-                print("[RAG] No PDF or TXT files found!")
-            if instance.collection.count() == 0:
-                print("[RAG] ChromaDB is empty. Attempting recovery...")
-                instance.recover_chromadb_from_index(settings.RAG_THESES_FOLDER)
+                print("[RAG] No TXT files found!")
         else:
-            print(f"[RAG] Skipping indexing - using existing {existing_chunks} chunks")
-        print(f"[RAG] Ready! Total chunks: {instance.collection.count()}")
+            # Write version stamp if it was missing but data looks good
+            if not os.path.exists(version_file):
+                with open(version_file, 'w') as vf:
+                    vf.write(cls.INDEX_VERSION)
+            print(f"[RAG] Ready! Total chunks: {existing_chunks}")
 
 
     def embed_chunks(self, chunks):
@@ -368,6 +416,9 @@ class RAGService:
                 )
 
                 indexed_files[txt_path] = mtime
+                # Save progress after each file so partial indexing survives restarts
+                with open(indexed_path, "w", encoding="utf-8") as f:
+                    json.dump(indexed_files, f)
                 # Free memory between files to avoid OOM
                 del chunks, chunk_embeddings, chunk_metadatas
                 gc.collect()
@@ -377,7 +428,7 @@ class RAGService:
                 gc.collect()
                 continue
 
-        # Save indexed file registry
+        # Final save
         with open(indexed_path, "w", encoding="utf-8") as f:
             json.dump(indexed_files, f)
 
