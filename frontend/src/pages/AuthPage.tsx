@@ -108,7 +108,7 @@ const AuthPage = () => {
                     backgroundSize: 'cover', 
                     backgroundPosition: 'center', 
                     backgroundRepeat: 'no-repeat',
-                    filter: 'blur(4px)'
+                    filter: 'blur(10px)'
                 }}
             />
             {/* Header */}
