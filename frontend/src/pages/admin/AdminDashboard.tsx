@@ -111,6 +111,19 @@ const AdminDashboard = () => {
     // ---------- Account Settings ----------
     const [showAccountSettings, setShowAccountSettings] = useState(false);
     const [settingsTab, setSettingsTab] = useState('profile');
+
+    // ---------- Feedback Details Modal ----------
+    const [selectedFeedback, setSelectedFeedback] = useState(null);
+    const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+    const [isEditingFeedback, setIsEditingFeedback] = useState(false);
+    const [feedbackEditForm, setFeedbackEditForm] = useState({
+        status: '',
+        admin_category: '',
+        is_valid: null,
+        validity_remarks: '',
+        is_doable: null,
+        feasibility_remarks: ''
+    });
     const [editFullName, setEditFullName] = useState(user?.full_name || '');
     const [editUsername, setEditUsername] = useState(user?.username || '');
     const [currentPassword, setCurrentPassword] = useState('');
@@ -782,7 +795,7 @@ const AdminDashboard = () => {
             rows.push([]); // empty line
 
             // --- SECTION 2: COLUMN HEADERS ---
-            rows.push(["Date", "Client Type", "Rating", "User Category", "Region", "Category", "Comment", "Status", "Valid?", "Doable?"]);
+            rows.push(["Date", "Rating", "User Category", "Region", "Category", "Comment", "Status"]);
 
             // --- SECTION 3: DATA ROWS ---
             filteredFeedbacks.forEach(fb => {
@@ -800,15 +813,12 @@ const AdminDashboard = () => {
 
                 rows.push([
                     escape(new Date(fb.created_at).toLocaleDateString()),
-                    escape(fb.client_type || ''),
                     escape(ratingText),
                     escape(fb.category || ''),
                     escape(fb.region || ''),
                     fb.admin_category && fb.admin_category.trim() !== '' ? escape(fb.admin_category) : 'N/A',
                     escape(comment),
-                    escape(fb.status || ''),
-                    fb.is_valid === true ? 'Yes' : fb.is_valid === false ? 'No' : '',
-                    fb.is_doable === true ? 'Yes' : fb.is_doable === false ? 'No' : ''
+                    escape(fb.status || '')
                 ]);
             });
 
@@ -832,6 +842,76 @@ const AdminDashboard = () => {
             // --- EXCEPTION HANDLING E2: Export Generation Failure ---
             console.error("Feedback export failed:", error);
             showToast('Failed to generate export file. Please try again.', 'error');
+        }
+    };
+
+    // ---------- Handle Feedback Row Click (Open Modal) ----------
+    const handleFeedbackClick = (feedback) => {
+        setSelectedFeedback(feedback);
+        setIsEditingFeedback(false);
+        setFeedbackEditForm({
+            status: feedback.status || 'Pending',
+            admin_category: feedback.admin_category || '',
+            is_valid: feedback.is_valid,
+            validity_remarks: feedback.validity_remarks || '',
+            is_doable: feedback.is_doable,
+            feasibility_remarks: feedback.feasibility_remarks || ''
+        });
+        setShowFeedbackModal(true);
+    };
+
+    // ---------- Handle Save Feedback from Modal ----------
+    const handleSaveFeedbackFromModal = async () => {
+        if (!feedbackEditForm.admin_category || feedbackEditForm.admin_category.trim() === '') {
+            showToast('⚠️ Please select a Category.', 'error');
+            return;
+        }
+        if (!feedbackEditForm.status || feedbackEditForm.status.trim() === '') {
+            showToast('⚠️ Please select a Status.', 'error');
+            return;
+        }
+        if (feedbackEditForm.is_valid === null) {
+            showToast('⚠️ Please select Yes or No for Is this valid?.', 'error');
+            return;
+        }
+        if (feedbackEditForm.is_doable === null) {
+            showToast('⚠️ Please select Yes or No for Is it doable?.', 'error');
+            return;
+        }
+        if (feedbackEditForm.is_valid !== null && (!feedbackEditForm.validity_remarks || feedbackEditForm.validity_remarks.trim() === '')) {
+            showToast('⚠️ Please provide a reason why this is valid (or invalid).', 'error');
+            return;
+        }
+        if (feedbackEditForm.is_doable !== null && (!feedbackEditForm.feasibility_remarks || feedbackEditForm.feasibility_remarks.trim() === '')) {
+            showToast('⚠️ Please justify the feasibility.', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/csm-feedback/${selectedFeedback.id}/`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    status: feedbackEditForm.status,
+                    admin_category: feedbackEditForm.admin_category,
+                    is_valid: feedbackEditForm.is_valid,
+                    validity_remarks: feedbackEditForm.validity_remarks,
+                    is_doable: feedbackEditForm.is_doable,
+                    feasibility_remarks: feedbackEditForm.feasibility_remarks
+                })
+            });
+
+            if (!response.ok) throw new Error('Failed to update');
+
+            // Update the feedback in the local state
+            const updatedFeedback = await response.json();
+            setFeedbacks(feedbacks.map(fb => fb.id === updatedFeedback.id ? updatedFeedback : fb));
+            setSelectedFeedback(updatedFeedback);
+            setIsEditingFeedback(false);
+            showToast('Feedback updated successfully!', 'success');
+        } catch (error) {
+            console.error(error);
+            showToast('Failed to update feedback.', 'error');
         }
     };
 
@@ -1445,6 +1525,325 @@ const AdminDashboard = () => {
                 <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 z-[100] px-6 py-3 rounded-lg shadow-xl text-sm font-bold text-white animate-slideDown ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'
                     }`}>
                     {toast.message}
+                </div>
+            )}
+
+            {/* Feedback Details Modal */}
+            {showFeedbackModal && selectedFeedback && (
+                <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden animate-fadeIn flex flex-col">
+                        {/* Modal Header */}
+                        <div className="bg-gradient-to-r from-[#1E74BC] to-[#155a8f] text-white p-4 flex-none">
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <h2 className="text-xl font-bold">Review Feedback</h2>
+                                </div>
+                                <button
+                                    onClick={() => setShowFeedbackModal(false)}
+                                    className="text-white hover:text-gray-200 transition-colors p-1"
+                                >
+                                    <X size={24} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Modal Content - Scrollable */}
+                        <div className="flex-1 overflow-y-auto p-6">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* Left Column - Client Feedback */}
+                                <div className="bg-white rounded-xl shadow-md border border-gray-200 flex flex-col overflow-hidden">
+                                    <div className="p-4 border-b border-gray-100 bg-gray-50">
+                                        <h3 className="text-l font-bold text-gray-800">Client Feedback</h3>
+                                    </div>
+                                    <div className="p-6 flex-1 overflow-y-auto flex flex-col gap-5">
+                                        {/* Data Privacy Consent */}
+                                        <div className="flex-none">
+                                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">
+                                                Data Privacy Consent
+                                            </label>
+                                            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm">
+                                                {selectedFeedback.consent_given ? (
+                                                    <span className="text-green-700 font-medium">✓ Consent given</span>
+                                                ) : (
+                                                    <span className="text-red-600 font-medium">✗ Consent not given</span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Client Profile */}
+                                        <div className="flex-none">
+                                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">
+                                                Client Profile
+                                            </label>
+                                            <div className="grid grid-cols-2 gap-3 bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm">
+                                                <span className="text-gray-600">Client Type:</span>
+                                                <span className="font-medium">{selectedFeedback.client_type || '—'}</span>
+                                                <span className="text-gray-600">Date of Interaction:</span>
+                                                <span className="font-medium">{selectedFeedback.date || '—'}</span>
+                                                <span className="text-gray-600">Sex:</span>
+                                                <span className="font-medium">{selectedFeedback.sex || '—'}</span>
+                                                <span className="text-gray-600">Age:</span>
+                                                <span className="font-medium">{selectedFeedback.age || '—'}</span>
+                                                <span className="text-gray-600">Region:</span>
+                                                <span className="font-medium">{selectedFeedback.region || '—'}</span>
+                                                <span className="text-gray-600">User Category:</span>
+                                                <span className="font-medium">{selectedFeedback.category || '—'}</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Feedback & Evaluation */}
+                                        <div className="flex-none">
+                                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">
+                                                Feedback & Evaluation
+                                            </label>
+                                            <div className="space-y-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                                <div>
+                                                    <span className="text-gray-600 text-sm">LitPath AI Rating:</span>
+                                                    <div className="flex items-center mt-1">
+                                                        {[1, 2, 3, 4, 5].map((star) => (
+                                                            <Star
+                                                                key={star}
+                                                                size={20}
+                                                                className={`${
+                                                                    selectedFeedback.litpath_rating >= star
+                                                                        ? 'text-yellow-400 fill-yellow-400'
+                                                                        : 'text-gray-300'
+                                                                } mr-1`}
+                                                            />
+                                                        ))}
+                                                        <span className="ml-2 text-sm font-medium">
+                                                            {selectedFeedback.litpath_rating ? `${selectedFeedback.litpath_rating}/5` : 'No rating'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-600 text-sm">Research Interests:</span>
+                                                    <p className="mt-1 text-sm bg-white p-3 rounded border border-gray-200">
+                                                        {selectedFeedback.research_interests || 'N/A'}
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-600 text-sm">Missing Content:</span>
+                                                    <p className="mt-1 text-sm bg-white p-3 rounded border border-gray-200">
+                                                        {selectedFeedback.missing_content || 'N/A'}
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <span className="text-gray-600 text-sm">Message / Comment:</span>
+                                                    <p className="mt-1 text-sm bg-white p-3 rounded border border-gray-200">
+                                                        {selectedFeedback.message_comment || 'N/A'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Right Column (Analysis & Action) */}
+                                <div className="bg-white rounded-xl shadow-md border border-gray-200 flex flex-col overflow-hidden">
+                                    <div className="p-4 border-b border-gray-100 bg-gray-50">
+                                        <h3 className="text-l font-bold text-gray-800">Analysis & Action</h3>
+                                    </div>
+                                    <div className="p-4 flex-1 overflow-y-auto space-y-6">
+                                        {/* Status - Editable */}
+                                        <div>
+                                            <label className="block text-sm font-bold text-gray-700 mb-2">
+                                                Status <span className="text-red-500">*</span>
+                                            </label>
+                                            {isEditingFeedback ? (
+                                                <select
+                                                    className="w-full border-gray-300 border rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white shadow-sm"
+                                                    value={feedbackEditForm.status}
+                                                    onChange={(e) => setFeedbackEditForm({ ...feedbackEditForm, status: e.target.value })}
+                                                >
+                                                    <option value="" disabled>Select Status</option>
+                                                    <option value="Pending">Pending</option>
+                                                    <option value="Reviewed">Reviewed</option>
+                                                    <option value="Resolved">Resolved</option>
+                                                </select>
+                                            ) : (
+                                                <span className={`px-3 py-2 inline-flex text-sm leading-5 font-semibold rounded-full ${
+                                                    selectedFeedback.status === 'Resolved' ? 'bg-green-100 text-green-800' : ''
+                                                }${selectedFeedback.status === 'Reviewed' ? 'bg-blue-100 text-blue-800' : ''}
+                                                ${selectedFeedback.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' : ''}`}>
+                                                    {selectedFeedback.status || 'Pending'}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        {/* Category - Editable */}
+                                        <div>
+                                            <label className="block text-sm font-bold text-gray-700 mb-2">
+                                                Category <span className="text-red-500">*</span>
+                                            </label>
+                                            {isEditingFeedback ? (
+                                                <select
+                                                    className="w-full border-gray-300 border rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white shadow-sm"
+                                                    value={feedbackEditForm.admin_category}
+                                                    onChange={(e) => setFeedbackEditForm({ ...feedbackEditForm, admin_category: e.target.value })}
+                                                >
+                                                    <option value="" disabled>Select Category</option>
+                                                    <option value="General">General</option>
+                                                    <option value="Positive">Positive</option>
+                                                    <option value="Issue">Issue / Bug</option>
+                                                    <option value="For Improvement">For Improvement</option>
+                                                </select>
+                                            ) : (
+                                                <span className="px-3 py-2 inline-flex text-sm leading-5 font-semibold rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+                                                    {selectedFeedback.admin_category || selectedFeedback.category || 'General'}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        {/* Valid? - Editable */}
+                                        <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/50">
+                                            <label className="block text-sm font-bold text-gray-700 mb-2">
+                                                Is this valid? <span className="text-red-500">*</span>
+                                            </label>
+                                            {isEditingFeedback ? (
+                                                <div className="flex gap-3 mb-3">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setFeedbackEditForm({ ...feedbackEditForm, is_valid: true })}
+                                                        className={`flex-1 py-2 text-sm font-semibold border rounded-lg transition-all ${
+                                                            feedbackEditForm.is_valid === true
+                                                                ? 'bg-green-600 text-white border-green-600 shadow-md transform scale-[1.02]'
+                                                                : 'bg-white text-gray-600 hover:bg-gray-50'
+                                                        }`}
+                                                    >
+                                                        Yes
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setFeedbackEditForm({ ...feedbackEditForm, is_valid: false })}
+                                                        className={`flex-1 py-2 text-sm font-semibold border rounded-lg transition-all ${
+                                                            feedbackEditForm.is_valid === false
+                                                                ? 'bg-red-600 text-white border-red-600 shadow-md transform scale-[1.02]'
+                                                                : 'bg-white text-gray-600 hover:bg-gray-50'
+                                                        }`}
+                                                    >
+                                                        No
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-2">
+                                                    {selectedFeedback.is_valid === true ? (
+                                                        <span className="text-green-600 font-semibold">✓ Yes</span>
+                                                    ) : selectedFeedback.is_valid === false ? (
+                                                        <span className="text-red-600 font-semibold">✗ No</span>
+                                                    ) : (
+                                                        <span className="text-gray-400">—</span>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {isEditingFeedback ? (
+                                                <textarea
+                                                    className="w-full border-gray-300 border rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-shadow"
+                                                    placeholder="Remarks (required) – explain why valid or invalid..."
+                                                    rows="3"
+                                                    value={feedbackEditForm.validity_remarks}
+                                                    onChange={(e) => setFeedbackEditForm({ ...feedbackEditForm, validity_remarks: e.target.value })}
+                                                />
+                                            ) : (
+                                                selectedFeedback.validity_remarks && (
+                                                    <p className="mt-2 text-sm text-gray-600 bg-white p-3 rounded border border-gray-200">
+                                                        {selectedFeedback.validity_remarks}
+                                                    </p>
+                                                )
+                                            )}
+                                        </div>
+
+                                        {/* Doable? - Editable */}
+                                        <div className="p-4 rounded-xl border border-gray-200 bg-gray-50/50">
+                                            <label className="block text-sm font-bold text-gray-700 mb-2">
+                                                Is it doable? <span className="text-red-500">*</span>
+                                            </label>
+                                            {isEditingFeedback ? (
+                                                <div className="flex gap-3 mb-3">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setFeedbackEditForm({ ...feedbackEditForm, is_doable: true })}
+                                                        className={`flex-1 py-2 text-sm font-semibold border rounded-lg transition-all ${
+                                                            feedbackEditForm.is_doable === true
+                                                                ? 'bg-green-600 text-white border-green-600 shadow-md transform scale-[1.02]'
+                                                                : 'bg-white text-gray-600 hover:bg-gray-50'
+                                                        }`}
+                                                    >
+                                                        Yes
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setFeedbackEditForm({ ...feedbackEditForm, is_doable: false })}
+                                                        className={`flex-1 py-2 text-sm font-semibold border rounded-lg transition-all ${
+                                                            feedbackEditForm.is_doable === false
+                                                                ? 'bg-red-600 text-white border-red-600 shadow-md transform scale-[1.02]'
+                                                                : 'bg-white text-gray-600 hover:bg-gray-50'
+                                                        }`}
+                                                    >
+                                                        No
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-2">
+                                                    {selectedFeedback.is_doable === true ? (
+                                                        <span className="text-green-600 font-semibold">✓ Yes</span>
+                                                    ) : selectedFeedback.is_doable === false ? (
+                                                        <span className="text-red-600 font-semibold">✗ No</span>
+                                                    ) : (
+                                                        <span className="text-gray-400">—</span>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {isEditingFeedback ? (
+                                                <textarea
+                                                    className="w-full border-gray-300 border rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-shadow"
+                                                    placeholder="Justification (required) – explain feasibility..."
+                                                    rows="3"
+                                                    value={feedbackEditForm.feasibility_remarks}
+                                                    onChange={(e) => setFeedbackEditForm({ ...feedbackEditForm, feasibility_remarks: e.target.value })}
+                                                />
+                                            ) : (
+                                                selectedFeedback.feasibility_remarks && (
+                                                    <p className="mt-2 text-sm text-gray-600 bg-white p-3 rounded border border-gray-200">
+                                                        {selectedFeedback.feasibility_remarks}
+                                                    </p>
+                                                )
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Action Buttons */}
+                                    <div className="p-3.5 border-t border-gray flex gap-4 justify-end">
+                                        {isEditingFeedback ? (
+                                            <>
+                                                <button
+                                                    onClick={() => setIsEditingFeedback(false)}
+                                                    className="px-5 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 font-bold hover:bg-gray-200 transition-colors"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    onClick={handleSaveFeedbackFromModal}
+                                                    className="px-8 py-2 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 shadow-md transition-all"
+                                                >
+                                                    Save Changes
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <button
+                                                    onClick={() => setIsEditingFeedback(true)}
+                                                    className="px-8 py-2 bg-[#1E74BC] text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-md transition-all"
+                                                >
+                                                    Edit
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -2694,21 +3093,17 @@ const AdminDashboard = () => {
                                     <thead className="bg-gray-100 sticky top-0 z-10">
                                         <tr>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Date</th>
-                                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Client Type</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Rating</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">User Category</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Region</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Category</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Comment</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Valid?</th>
-                                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Doable?</th>
-                                            <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody className="bg-white divide-y divide-gray-200">
                                         {feedbacks.length === 0 ? (
-                                            <tr><td colSpan="10" className="px-6 py-10 text-center text-gray-500 text-sm">No feedback records found.</td></tr>
+                                            <tr><td colSpan="7" className="px-6 py-10 text-center text-gray-500 text-sm">No feedback records found.</td></tr>
                                         ) : (
                                             (() => {
                                                 const filtered = feedbacks
@@ -2718,7 +3113,7 @@ const AdminDashboard = () => {
                                                 if (filtered.length === 0) {
                                                     return (
                                                         <tr>
-                                                            <td colSpan="10" className="px-6 py-10 text-center text-gray-500 text-sm">
+                                                            <td colSpan="7" className="px-6 py-10 text-center text-gray-500 text-sm">
                                                                 No records match your filter.
                                                             </td>
                                                         </tr>
@@ -2726,12 +3121,9 @@ const AdminDashboard = () => {
                                                 }
                                                 
                                                 return filtered.map((fb) => (
-                                                    <tr key={fb.id} className="hover:bg-gray-50 transition-colors">
+                                                    <tr key={fb.id} className="hover:bg-gray-50 transition-colors cursor-pointer group" onClick={() => handleFeedbackClick(fb)} title="View details">
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">
                                                             {new Date(fb.created_at).toLocaleDateString()}
-                                                        </td>
-                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">
-                                                            {fb.client_type}
                                                         </td>
                                                         <td className="px-6 py-4 whitespace-nowrap">
                                                             <div className="flex items-center text-yellow-500">
@@ -2761,20 +3153,6 @@ const AdminDashboard = () => {
                                                             `}>
                                                                 {fb.status}
                                                             </span>
-                                                        </td>
-                                                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                                            {fb.is_valid === true ? '✓ Yes' : fb.is_valid === false ? '✗ No' : '—'}
-                                                        </td>
-                                                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                                            {fb.is_doable === true ? '✓ Yes' : fb.is_doable === false ? '✗ No' : '—'}
-                                                        </td>
-                                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                            <button
-                                                                onClick={() => navigate(`/admin/feedback/${fb.id}`)}
-                                                                className="text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded transition-colors font-semibold text-xs"
-                                                            >
-                                                                View
-                                                            </button>
                                                         </td>
                                                     </tr>
                                                 ));
