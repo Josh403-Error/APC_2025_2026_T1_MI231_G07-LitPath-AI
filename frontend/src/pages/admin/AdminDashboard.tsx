@@ -2855,12 +2855,31 @@ const AdminDashboard = () => {
                     {/* ----- FEEDBACK MANAGER TAB ----- */}
                     {activeTab === 'feedback' && (
                         <div className="h-full flex flex-col bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden max-w-[1600px] mx-auto w-full">
-                            <div className="p-4 border-b border-gray-200 bg-gray-50 flex flex-col md:flex-row gap-4 justify-between items-center flex-none">
-                                <div>
-                                    <h2 className="text-lg font-bold text-gray-800">CSM Feedback</h2>
-                                    <p className="text-xs text-gray-500">Manage client satisfaction responses</p>
+                            <div className="p-4 border-b border-gray-200 bg-gray-50 flex flex-col gap-4 flex-none">
+                                {/* Row 1: Title and Clock */}
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <h2 className="text-lg font-bold text-gray-800">CSM Feedback</h2>
+                                        <p className="text-xs text-gray-500">Manage client satisfaction responses</p>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-0">
+                                        <div className="text-xs text-gray-500">Philippine Standard Time</div>
+                                        <div className="text-sm font-medium text-gray-700">
+                                            {currentDateTime.toLocaleString('en-US', {
+                                            weekday: 'long',
+                                            year: 'numeric',
+                                            month: 'long',
+                                            day: 'numeric',
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                            second: '2-digit',
+                                            hour12: true
+                                            })}
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="flex gap-3">
+                                {/* Row 2: Export and Filters */}
+                                <div className="flex gap-3 items-center justify-end">
                                     {/* Export Button */}
                                     <button
                                         onClick={handleFeedbackExportCSV}
@@ -3170,13 +3189,31 @@ const AdminDashboard = () => {
                         <div className="h-full flex flex-col gap-2 max-w-[1600px] mx-auto w-full overflow-y-auto pb-8 pr-2">
 
                             {/* 1. Header & Filter Section */}
-                            <div className="flex flex-col sm:flex-row justify-between items-end sm:items-center">
-                                <div>
-                                    <h2 className="text-xl font-bold text-gray-800">Content Relevance & Quality</h2>
-                                    <p className="text-sm text-gray-500">Monitor user satisfaction and identify materials for archiving.</p>
+                            <div className="flex flex-col gap-2">
+                                {/* Row 1: Title and Clock */}
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <h2 className="text-xl font-bold text-gray-800">Content Relevance & Quality</h2>
+                                        <p className="text-sm text-gray-500">Monitor user satisfaction and identify materials for archiving.</p>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-0">
+                                        <div className="text-xs text-gray-500">Philippine Standard Time</div>
+                                        <div className="text-sm font-medium text-gray-700">
+                                            {currentDateTime.toLocaleString('en-US', {
+                                            weekday: 'long',
+                                            year: 'numeric',
+                                            month: 'long',
+                                            day: 'numeric',
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                            second: '2-digit',
+                                            hour12: true
+                                            })}
+                                        </div>
+                                    </div>
                                 </div>
-
-                                <div className="flex gap-2">
+                                {/* Row 2: Export and Filters */}
+                                <div className="flex gap-2 items-center justify-end">
                                     {/* Export Button */}
                                     <button
                                         onClick={handleRatingsExportCSV}
