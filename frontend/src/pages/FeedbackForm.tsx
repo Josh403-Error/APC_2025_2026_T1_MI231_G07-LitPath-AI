@@ -139,6 +139,9 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
         if (!formData.category) {
             newErrors.category = 'Category is required';
         }
+        if (!formData.research_interests || !formData.research_interests.trim()) {
+            newErrors.research_interests = 'Research Interests/Topics is required';
+        }
         
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
@@ -489,10 +492,10 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
                             )}
                         </div>
 
-                        {/* Research Interests/Topics - Optional */}
+                        {/* Research Interests/Topics - Required */}
                         <div className="mb-4">
                             <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Research Interests/Topics (Optional)
+                                Research Interests/Topics <span className="text-red-500">*</span>
                             </label>
                             <p className="text-xs text-gray-500 mb-2">Mga Interes sa Pananaliksik</p>
                             <textarea
@@ -503,6 +506,9 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
                                 className="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
                                 placeholder="Enter your research interests or topics..."
                             />
+                            {errors.research_interests && (
+                                <p className="text-red-500 text-sm">{errors.research_interests}</p>
+                            )}
                         </div>
 
                         {/* Missing Content - Optional */}
