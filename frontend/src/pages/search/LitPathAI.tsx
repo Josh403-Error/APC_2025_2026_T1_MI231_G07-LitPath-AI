@@ -1417,6 +1417,22 @@ return (
 
 
                 <div className="flex items-center gap-4">
+                    {/* PST Clock */}
+                    <div className="hidden sm:block text-right">
+                        <div className="text-xs text-gray-400">Philippine Standard Time</div>
+                        <div className="text-sm font-medium text-white">
+                            {currentDateTime.toLocaleString('en-US', {
+                                weekday: 'short',
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit',
+                                hour12: true
+                            })}
+                        </div>
+                    </div>
                     {/* User Menu */}
                     <div className="relative" ref={userMenuRef}>
                         <button
@@ -1502,23 +1518,6 @@ return (
                 </div>
             </div>
         </header>
-
-        {/* PST Clock - Below header, visible across all views */}
-        <div className="fixed top-20 right-4 z-30 text-right pointer-events-none">
-            <div className="text-xs text-gray-500">Philippine Standard Time</div>
-            <div className="text-sm font-medium text-gray-700">
-                {currentDateTime.toLocaleString('en-US', {
-                    weekday: 'short',
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                    hour12: true
-                })}
-            </div>
-        </div>
 
         {/* Sidebar (mobile overlay) */}
         {sidebarOpen && (
