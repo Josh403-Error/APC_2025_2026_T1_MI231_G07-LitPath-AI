@@ -41,6 +41,16 @@ const LitPathAI = () => {
         setUserMenuKey(k => k + 1);
     }, [user?.full_name, user?.username]);
     
+    // Real-time clock state
+    const [currentDateTime, setCurrentDateTime] = useState(new Date());
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setCurrentDateTime(new Date());
+        }, 1000);
+        return () => clearInterval(timer);
+    }, []);
+    
     // Handle click outside to close user menu
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -1492,6 +1502,23 @@ return (
                 </div>
             </div>
         </header>
+
+        {/* PST Clock - Below header, visible across all views */}
+        <div className="fixed top-20 right-4 z-30 text-right pointer-events-none">
+            <div className="text-xs text-gray-500">Philippine Standard Time</div>
+            <div className="text-sm font-medium text-gray-700">
+                {currentDateTime.toLocaleString('en-US', {
+                    weekday: 'short',
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: true
+                })}
+            </div>
+        </div>
 
         {/* Sidebar (mobile overlay) */}
         {sidebarOpen && (
