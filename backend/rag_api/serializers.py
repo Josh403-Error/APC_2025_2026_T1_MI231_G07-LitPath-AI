@@ -6,7 +6,12 @@ from .models import UserAccount, Bookmark, ResearchHistory, Feedback, CSMFeedbac
 class UserAccountSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserAccount
-        fields = ['id', 'email', 'username', 'full_name', 'role']
+        fields = [
+            'id', 'email', 'username', 'full_name', 'role',
+            'school_level', 'school_name',
+            'client_type', 'sex', 'age', 'region', 'category',
+            'terms_accepted', 'terms_accepted_at', 'terms_version'
+        ]
         read_only_fields = ['id', 'email', 'role']
 
 

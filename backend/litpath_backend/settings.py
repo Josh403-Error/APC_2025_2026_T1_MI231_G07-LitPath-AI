@@ -132,6 +132,12 @@ else:
         }
     }
 
+# Dedicated test DB name for stable automated test runs.
+TEST_DB_NAME = os.getenv('TEST_DB_NAME', 'litpath_test_db')
+if 'postgresql' in DATABASES['default'].get('ENGINE', ''):
+    DATABASES['default'].setdefault('TEST', {})
+    DATABASES['default']['TEST']['NAME'] = TEST_DB_NAME
+
 
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
@@ -198,6 +204,14 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 CORS_ALLOW_CREDENTIALS = True
+
+# Security settings (enable in production via environment variables)
+SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'False') == 'True'
+SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False') == 'True'
+CSRF_COOKIE_SECURE = os.environ.get('CSRF_COOKIE_SECURE', 'False') == 'True'
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax')
+CSRF_COOKIE_SAMESITE = os.environ.get('CSRF_COOKIE_SAMESITE', 'Lax')
 
 # REST Framework settings
 REST_FRAMEWORK = {

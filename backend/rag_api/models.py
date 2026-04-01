@@ -2,6 +2,7 @@ from django.db import models
 from django.utils import timezone
 from datetime import timedelta
 import uuid
+import hashlib
 from django.contrib.auth.hashers import make_password, check_password
 from django.contrib.postgres.fields import ArrayField
 
@@ -26,6 +27,16 @@ class UserAccount(models.Model):
     password_hash = models.CharField(max_length=200, db_column='user_password_hash')
     full_name = models.CharField(max_length=100, blank=True, null=True, db_column='user_full_name')
     username = models.CharField(max_length=50, unique=True, db_column='user_username')
+    school_level = models.CharField(max_length=50, blank=True, null=True, db_column='user_school_level')
+    school_name = models.CharField(max_length=255, blank=True, null=True, db_column='user_school_name')
+    client_type = models.CharField(max_length=50, blank=True, null=True, db_column='user_client_type')
+    sex = models.CharField(max_length=50, blank=True, null=True, db_column='user_sex')
+    age = models.CharField(max_length=50, blank=True, null=True, db_column='user_age')
+    region = models.CharField(max_length=50, blank=True, null=True, db_column='user_region')
+    category = models.CharField(max_length=100, blank=True, null=True, db_column='user_category')
+    terms_accepted = models.BooleanField(default=False, db_column='user_terms_accepted')
+    terms_accepted_at = models.DateTimeField(blank=True, null=True, db_column='user_terms_accepted_at')
+    terms_version = models.CharField(max_length=50, blank=True, null=True, db_column='user_terms_version')
     created_at = models.DateTimeField(auto_now_add=True, db_column='user_created_at')
     last_login = models.DateTimeField(blank=True, null=True, db_column='user_last_login')
     role = models.CharField(
@@ -97,6 +108,36 @@ class Session(models.Model):
         """Update last seen timestamp"""
         self.last_seen = timezone.now()
         self.save(update_fields=['last_seen'])
+
+    @staticmethod
+    def hash_token(raw_token):
+        """Return a deterministic hash used for token-at-rest storage."""
+        return hashlib.sha256((raw_token or '').encode('utf-8')).hexdigest()
+
+    @classmethod
+    def find_by_token(cls, raw_token, **filters):
+        """Find session by hashed token, with plaintext fallback for legacy rows."""
+        if not raw_token:
+            return None
+        queryset = cls.objects.filter(**filters)
+        hashed = cls.hash_token(raw_token)
+        session = queryset.filter(session_token=hashed).first()
+        if session:
+            return session
+        return queryset.filter(session_token=raw_token).first()
+
+    @classmethod
+    def delete_by_token(cls, raw_token, **filters):
+        """Delete session by token, supporting hashed and legacy plaintext rows."""
+        if not raw_token:
+            return 0
+        queryset = cls.objects.filter(**filters)
+        hashed = cls.hash_token(raw_token)
+        deleted, _ = queryset.filter(session_token=hashed).delete()
+        if deleted:
+            return deleted
+        deleted, _ = queryset.filter(session_token=raw_token).delete()
+        return deleted
     
     @classmethod
     def create_for_user(cls, user):
@@ -107,11 +148,13 @@ class Session(models.Model):
         # Delete existing session for this user (enforce one-to-one)
         cls.objects.filter(user=user).delete()
         
+        raw_token = secrets.token_urlsafe(32)
         session = cls.objects.create(
             user=user,
             is_anonymous=False,
-            session_token=secrets.token_urlsafe(32)
+            session_token=cls.hash_token(raw_token)
         )
+        session.public_session_token = raw_token
         return session
     
     @classmethod
@@ -119,12 +162,14 @@ class Session(models.Model):
         """Create a new anonymous/guest session"""
         import secrets
         guest_id = f"guest_{int(timezone.now().timestamp())}_{secrets.token_hex(4)}"
+        raw_token = secrets.token_urlsafe(32)
         session = cls.objects.create(
             user=None,
             is_anonymous=True,
             guest_id=guest_id,
-            session_token=secrets.token_urlsafe(32)
+            session_token=cls.hash_token(raw_token)
         )
+        session.public_session_token = raw_token
         return session
     
     def __str__(self):

@@ -8,6 +8,31 @@ export interface UserData {
     username: string;
     full_name: string;
     role: string;
+    school_level?: string | null;
+    school_name?: string | null;
+    client_type?: string | null;
+    sex?: string | null;
+    age?: string | null;
+    region?: string | null;
+    category?: string | null;
+    terms_version?: string | null;
+}
+
+interface RegisterPayload {
+    email: string;
+    password: string;
+    username: string;
+    full_name?: string;
+    school_level: string;
+    school_name: string;
+    client_type: string;
+    sex: string;
+    age: string;
+    region: string;
+    category: string;
+    terms_accepted: boolean;
+    terms_version?: string;
+    captcha_token?: string;
 }
 
 export interface SessionData {
@@ -32,6 +57,7 @@ export interface AuthContextValue {
     loading: boolean;
     isGuest: boolean;
     login: (email: string, password: string) => Promise<AuthResult>;
+    register: (payload: RegisterPayload) => Promise<AuthResult>;
     logout: () => Promise<void>;
     continueAsGuest: () => Promise<AuthResult>;
     startNewChat: () => Promise<AuthResult>;
@@ -138,7 +164,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                     email: data.user.email,
                     username: data.user.username,
                     full_name: data.user.full_name,
-                    role: data.user.role
+                    role: data.user.role,
+                    school_level: data.user.school_level || null,
+                    school_name: data.user.school_name || null,
+                    client_type: data.user.client_type || null,
+                    sex: data.user.sex || null,
+                    age: data.user.age || null,
+                    region: data.user.region || null,
+                    category: data.user.category || null,
+                    terms_version: data.user.terms_version || null
                 };
 
                 // Ensure sessionData includes session_token for API auth
@@ -163,6 +197,58 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             }
         } catch (error) {
             console.error('Login error:', error);
+            return { success: false, error: 'Connection error. Please try again.' };
+        }
+    };
+
+    // Register a new user account
+    const register = async (payload: RegisterPayload) => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/auth/register/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                const userData = {
+                    id: data.user.id,
+                    email: data.user.email,
+                    username: data.user.username,
+                    full_name: data.user.full_name,
+                    role: data.user.role,
+                    school_level: data.user.school_level || null,
+                    school_name: data.user.school_name || null,
+                    client_type: data.user.client_type || null,
+                    sex: data.user.sex || null,
+                    age: data.user.age || null,
+                    region: data.user.region || null,
+                    category: data.user.category || null,
+                    terms_version: data.user.terms_version || null
+                };
+
+                const sessionData = {
+                    session_id: data.session.session_id,
+                    created_at: data.session.created_at,
+                    is_anonymous: false,
+                    session_token: data.session.session_token || data.session.session_id
+                };
+
+                localStorage.setItem('litpath_auth_user', JSON.stringify(userData));
+                localStorage.setItem('litpath_session', JSON.stringify(sessionData));
+
+                setUser(userData);
+                setSession(sessionData);
+                setIsGuest(false);
+
+                return { success: true, user: userData };
+            }
+
+            return { success: false, error: data.message || 'Registration failed' };
+        } catch (error) {
+            console.error('Register error:', error);
             return { success: false, error: 'Connection error. Please try again.' };
         }
     };
@@ -390,6 +476,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         loading,
         isGuest,
         login,
+        register,
         logout,
         continueAsGuest,
         startNewChat,

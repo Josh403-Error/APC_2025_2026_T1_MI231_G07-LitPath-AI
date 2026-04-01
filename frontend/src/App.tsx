@@ -7,6 +7,8 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import FeedbackForm from './pages/FeedbackForm';
 import FeedbackDetail from './pages/admin/FeedbackDetail';
 import ResetPassword from './pages/ResetPassword';
+import TermsAndConditions from './pages/TermsAndConditions.tsx';
+import AccountProfile from './pages/AccountProfile';
 
 // ------------------------------------------------------------
 //  Protected Route
@@ -106,8 +108,14 @@ const AppContent = () => {
             {/* CSM Feedback Form */}
             <Route path="/feedback-form" element={<ProtectedRoute><FeedbackForm /></ProtectedRoute>} />
 
+            {/* Account profile */}
+            <Route path="/account-profile" element={<ProtectedRoute><AccountProfile /></ProtectedRoute>} />
+
             {/* Reset password */}
             <Route path="/reset-password/:token" element={<ResetPassword />} />
+
+            {/* Terms and conditions */}
+            <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
 
             {/* Catch-all */}
             <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,5 +1,9 @@
 from django.core.mail import send_mail
+import os
+import json
 import secrets
+from urllib import parse, request as urllib_request
+from django.core.cache import cache
 from django.conf import settings
 from rest_framework.decorators import api_view, permission_classes
 # --- Password Reset Request Endpoint ---
@@ -17,12 +21,8 @@ def auth_password_reset_request_view(request):
     if user:
         # Generate a reset token (in production, store this in DB and expire it)
         reset_token = secrets.token_urlsafe(32)
-        # For now, just print the reset link (simulate email)
         reset_link = f"http://localhost:5173/reset-password/{reset_token}"
-        print(f"[DEBUG] Password reset link for {email}: {reset_link}")
-        # In production, send email:
         send_mail('Password Reset', f'Click to reset your password: {reset_link}', settings.DEFAULT_FROM_EMAIL, [email])
-        # Optionally, store the token in the user model or a separate table
     # Always return success for security
     return Response({'success': True, 'message': 'If this email exists, a reset link will be sent.'})
 
@@ -33,33 +33,86 @@ from rest_framework.permissions import IsAuthenticated
 @api_view(['POST'])
 def auth_update_profile_view(request):
     """
-    Update user profile (full_name, username)
-    Expects: { full_name?: string, username?: string }
+    Update user profile details
+    Expects optional fields:
+    {
+        full_name?: string,
+        username?: string,
+        email?: string,
+        school_level?: string,
+        school_name?: string,
+        client_type?: string,
+        sex?: string,
+        age?: string,
+        region?: string,
+        category?: string
+    }
     Requires: Authorization: Bearer <session_token>
     """
     auth_header = request.headers.get('Authorization', '')
-    print('DEBUG: Authorization header:', auth_header)
     if not auth_header.startswith('Bearer '):
-        print('DEBUG: No Bearer token in Authorization header')
         return Response({'success': False, 'message': 'No session token provided'}, status=status.HTTP_401_UNAUTHORIZED)
     session_token = auth_header[7:]
-    print('DEBUG: Extracted session_token:', session_token)
-    session = Session.objects.filter(session_token=session_token).first()
-    print('DEBUG: Session lookup result:', session)
+    session = Session.find_by_token(session_token)
     if not session or not session.user:
-        print('DEBUG: Invalid or expired session')
         return Response({'success': False, 'message': 'Invalid or expired session'}, status=status.HTTP_401_UNAUTHORIZED)
+
     user = session.user
     data = request.data
+
     new_username = data.get('username', '').strip()
     new_full_name = data.get('full_name', '').strip()
+    new_email = data.get('email', '').strip().lower()
+
     # Check if username is changing and unique
     if new_username and new_username != user.username:
         if UserAccount.objects.filter(username=new_username).exclude(id=user.id).exists():
             return Response({'success': False, 'message': 'Username already taken'}, status=status.HTTP_400_BAD_REQUEST)
         user.username = new_username
+
+    # Check if email is changing and unique
+    if new_email and new_email != user.email:
+        if UserAccount.objects.filter(email=new_email).exclude(id=user.id).exists():
+            return Response({'success': False, 'message': 'Email already registered'}, status=status.HTTP_400_BAD_REQUEST)
+        user.email = new_email
+
     if new_full_name:
         user.full_name = new_full_name
+
+    # Optional profile fields used by registration and CSM autofill
+    if 'school_level' in data:
+        school_level = (data.get('school_level') or '').strip()
+        if school_level and not _is_valid_choice(school_level, ALLOWED_SCHOOL_LEVELS):
+            return Response({'success': False, 'message': 'Invalid school level selected'}, status=status.HTTP_400_BAD_REQUEST)
+        user.school_level = school_level or None
+    if 'school_name' in data:
+        user.school_name = (data.get('school_name') or '').strip() or None
+    if 'client_type' in data:
+        client_type = (data.get('client_type') or '').strip()
+        if client_type and not _is_valid_choice(client_type, ALLOWED_CLIENT_TYPES):
+            return Response({'success': False, 'message': 'Invalid client type selected'}, status=status.HTTP_400_BAD_REQUEST)
+        user.client_type = client_type or None
+    if 'sex' in data:
+        sex = (data.get('sex') or '').strip()
+        if sex and not _is_valid_choice(sex, ALLOWED_SEX):
+            return Response({'success': False, 'message': 'Invalid sex selected'}, status=status.HTTP_400_BAD_REQUEST)
+        user.sex = sex or None
+    if 'age' in data:
+        age = (data.get('age') or '').strip()
+        if age and not _is_valid_choice(age, ALLOWED_AGE):
+            return Response({'success': False, 'message': 'Invalid age range selected'}, status=status.HTTP_400_BAD_REQUEST)
+        user.age = age or None
+    if 'region' in data:
+        region = (data.get('region') or '').strip()
+        if region and not _is_valid_choice(region, ALLOWED_REGION):
+            return Response({'success': False, 'message': 'Invalid region selected'}, status=status.HTTP_400_BAD_REQUEST)
+        user.region = region or None
+    if 'category' in data:
+        category = (data.get('category') or '').strip()
+        if category and not _is_valid_choice(category, ALLOWED_CATEGORY):
+            return Response({'success': False, 'message': 'Invalid user category selected'}, status=status.HTTP_400_BAD_REQUEST)
+        user.category = category or None
+
     user.save()
     serializer = UserAccountSerializer(user)
     return Response({'success': True, 'user': serializer.data})
@@ -71,7 +124,87 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from django.utils import timezone
-from .models import UserAccount, Session, UserRole
+from .models import UserAccount, Session, UserRole, CSMFeedback
+
+
+CURRENT_TERMS_VERSION = os.getenv('TERMS_VERSION', 'v2026-04-01')
+REGISTER_RATE_LIMIT = int(os.getenv('REGISTER_RATE_LIMIT', '10'))
+REGISTER_RATE_WINDOW_SECONDS = int(os.getenv('REGISTER_RATE_WINDOW_SECONDS', '3600'))
+REQUIRE_CAPTCHA = os.getenv('REQUIRE_CAPTCHA', 'false').lower() == 'true'
+RECAPTCHA_SECRET_KEY = os.getenv('RECAPTCHA_SECRET_KEY', '')
+CAPTCHA_VERIFY_URL = os.getenv('CAPTCHA_VERIFY_URL', 'https://www.google.com/recaptcha/api/siteverify')
+
+ALLOWED_SCHOOL_LEVELS = {
+    'Junior High School',
+    'Senior High School',
+    'Undergraduate',
+    'Graduate',
+    'Postgraduate'
+}
+ALLOWED_CLIENT_TYPES = {choice[0] for choice in CSMFeedback.CLIENT_TYPE_CHOICES}
+ALLOWED_SEX = {choice[0] for choice in CSMFeedback.SEX_CHOICES}
+ALLOWED_AGE = {choice[0] for choice in CSMFeedback.AGE_CHOICES}
+ALLOWED_REGION = {choice[0] for choice in CSMFeedback.REGION_CHOICES}
+ALLOWED_CATEGORY = {choice[0] for choice in CSMFeedback.CATEGORY_CHOICES}
+
+
+def _is_valid_choice(value, allowed_values):
+    return value in allowed_values
+
+
+def _client_ip(request_obj):
+    xff = request_obj.META.get('HTTP_X_FORWARDED_FOR')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request_obj.META.get('REMOTE_ADDR', 'unknown')
+
+
+def _register_rate_limited(request_obj):
+    ip = _client_ip(request_obj)
+    key = f"auth_register_rate:{ip}"
+
+    count = cache.get(key)
+    if count is None:
+        cache.set(key, 1, REGISTER_RATE_WINDOW_SECONDS)
+        return False
+
+    if int(count) >= REGISTER_RATE_LIMIT:
+        return True
+
+    try:
+        cache.incr(key)
+    except Exception:
+        cache.set(key, int(count) + 1, REGISTER_RATE_WINDOW_SECONDS)
+
+    return False
+
+
+def _verify_captcha(captcha_token, client_ip):
+    if not REQUIRE_CAPTCHA:
+        return True, None
+
+    if not RECAPTCHA_SECRET_KEY:
+        return False, 'CAPTCHA is temporarily unavailable. Please try again later.'
+
+    if not captcha_token:
+        return False, 'CAPTCHA verification failed. Please try again.'
+
+    try:
+        payload = parse.urlencode({
+            'secret': RECAPTCHA_SECRET_KEY,
+            'response': captcha_token,
+            'remoteip': client_ip,
+        }).encode('utf-8')
+
+        req = urllib_request.Request(CAPTCHA_VERIFY_URL, data=payload, method='POST')
+        with urllib_request.urlopen(req, timeout=8) as resp:
+            body = json.loads(resp.read().decode('utf-8'))
+
+        if body.get('success'):
+            return True, None
+        return False, 'CAPTCHA verification failed. Please try again.'
+    except Exception:
+        return False, 'CAPTCHA verification failed. Please try again.'
 
 
 @api_view(['POST'])
@@ -120,11 +253,19 @@ def auth_login_view(request):
                 'email': user.email,
                 'username': user.username,
                 'full_name': user.full_name,
-                'role': user.role
+                'role': user.role,
+                'school_level': user.school_level,
+                'school_name': user.school_name,
+                'client_type': user.client_type,
+                'sex': user.sex,
+                'age': user.age,
+                'region': user.region,
+                'category': user.category,
+                'terms_version': user.terms_version
             },
             'session': {
                 'session_id': session.id,
-                'session_token': session.session_token,
+                'session_token': getattr(session, 'public_session_token', session.session_token),
                 'created_at': session.created_at.isoformat(),
                 'is_anonymous': False
             }
@@ -142,26 +283,83 @@ def auth_login_view(request):
 def auth_register_view(request):
     """
     Register a new user account
-    Expects: { email: string, password: string, username: string, full_name?: string }
+    Expects: {
+        email: string,
+        password: string,
+        username: string,
+        full_name?: string,
+        school_level: string,
+        school_name: string,
+        client_type: string,
+        sex: string,
+        age: string,
+        region: string,
+        category: string,
+        terms_accepted: boolean,
+        terms_version?: string,
+        captcha_token?: string
+    }
     Returns: { success: bool, user: object, session: object }
     """
     email = request.data.get('email', '').strip().lower()
     password = request.data.get('password', '')
     username = request.data.get('username', '').strip()
     full_name = request.data.get('full_name', '').strip()
-    
-    if not email or not password or not username:
+    school_level = request.data.get('school_level', '').strip()
+    school_name = request.data.get('school_name', '').strip()
+    client_type = request.data.get('client_type', '').strip()
+    sex = request.data.get('sex', '').strip()
+    age = request.data.get('age', '').strip()
+    region = request.data.get('region', '').strip()
+    category = request.data.get('category', '').strip()
+    terms_accepted = request.data.get('terms_accepted', False)
+    terms_version = (request.data.get('terms_version') or CURRENT_TERMS_VERSION).strip() or CURRENT_TERMS_VERSION
+    captcha_token = request.data.get('captcha_token', '')
+
+    if _register_rate_limited(request):
         return Response({
             'success': False,
-            'message': 'Email, password, and username are required'
+            'message': 'Too many registration attempts. Please try again later.'
+        }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+    captcha_ok, captcha_error = _verify_captcha(captcha_token, _client_ip(request))
+    if not captcha_ok:
+        return Response({
+            'success': False,
+            'message': captcha_error
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not email or not password or not username or not school_level or not school_name or not client_type or not sex or not age or not region or not category:
+        return Response({
+            'success': False,
+            'message': 'Email, password, username, school profile, and CSM profile fields are required'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    if not terms_accepted:
+        return Response({
+            'success': False,
+            'message': 'You must accept the Terms and Conditions to sign up'
         }, status=status.HTTP_400_BAD_REQUEST)
     
     # Validate password length
-    if len(password) < 6:
+    if len(password) < 8:
         return Response({
             'success': False,
-            'message': 'Password must be at least 6 characters'
+            'message': 'Password must be at least 8 characters long'
         }, status=status.HTTP_400_BAD_REQUEST)
+
+    if not _is_valid_choice(school_level, ALLOWED_SCHOOL_LEVELS):
+        return Response({'success': False, 'message': 'Invalid school level selected'}, status=status.HTTP_400_BAD_REQUEST)
+    if not _is_valid_choice(client_type, ALLOWED_CLIENT_TYPES):
+        return Response({'success': False, 'message': 'Invalid client type selected'}, status=status.HTTP_400_BAD_REQUEST)
+    if not _is_valid_choice(sex, ALLOWED_SEX):
+        return Response({'success': False, 'message': 'Invalid sex selected'}, status=status.HTTP_400_BAD_REQUEST)
+    if not _is_valid_choice(age, ALLOWED_AGE):
+        return Response({'success': False, 'message': 'Invalid age range selected'}, status=status.HTTP_400_BAD_REQUEST)
+    if not _is_valid_choice(region, ALLOWED_REGION):
+        return Response({'success': False, 'message': 'Invalid region selected'}, status=status.HTTP_400_BAD_REQUEST)
+    if not _is_valid_choice(category, ALLOWED_CATEGORY):
+        return Response({'success': False, 'message': 'Invalid user category selected'}, status=status.HTTP_400_BAD_REQUEST)
     
     try:
         # Check if email already exists
@@ -183,6 +381,16 @@ def auth_register_view(request):
             email=email,
             username=username,
             full_name=full_name or username,
+            school_level=school_level,
+            school_name=school_name,
+            client_type=client_type,
+            sex=sex,
+            age=age,
+            region=region,
+            category=category,
+            terms_accepted=True,
+            terms_accepted_at=timezone.now(),
+            terms_version=terms_version,
             role=UserRole.USER
         )
         user.set_password(password)
@@ -198,11 +406,19 @@ def auth_register_view(request):
                 'email': user.email,
                 'username': user.username,
                 'full_name': user.full_name,
-                'role': user.role
+                'role': user.role,
+                'school_level': user.school_level,
+                'school_name': user.school_name,
+                'client_type': user.client_type,
+                'sex': user.sex,
+                'age': user.age,
+                'region': user.region,
+                'category': user.category,
+                'terms_version': user.terms_version
             },
             'session': {
                 'session_id': session.id,
-                'session_token': session.session_token,
+                'session_token': getattr(session, 'public_session_token', session.session_token),
                 'created_at': session.created_at.isoformat(),
                 'is_anonymous': False
             }
@@ -230,7 +446,7 @@ def auth_guest_session_view(request):
             'success': True,
             'session': {
                 'session_id': session.id,
-                'session_token': session.session_token,
+                'session_token': getattr(session, 'public_session_token', session.session_token),
                 'guest_id': session.guest_id,
                 'created_at': session.created_at.isoformat(),
                 'is_anonymous': True
@@ -264,7 +480,7 @@ def auth_validate_session_view(request):
     try:
         # Find session
         if session_token:
-            session = Session.objects.filter(session_token=session_token).first()
+            session = Session.find_by_token(session_token)
         else:
             session = Session.objects.filter(id=session_id).first()
         
@@ -322,7 +538,7 @@ def auth_logout_view(request):
     
     try:
         if session_token:
-            Session.objects.filter(session_token=session_token).delete()
+            Session.delete_by_token(session_token)
         elif session_id:
             Session.objects.filter(id=session_id).delete()
         
@@ -346,7 +562,7 @@ def auth_delete_guest_data_view(request):
         # Find the session
         session = None
         if session_token:
-            session = Session.objects.filter(session_token=session_token, is_anonymous=True).first()
+            session = Session.find_by_token(session_token, is_anonymous=True)
         elif guest_id:
             session = Session.objects.filter(guest_id=guest_id, is_anonymous=True).first()
         
@@ -399,7 +615,7 @@ def auth_me_view(request):
     session_token = auth_header[7:]  # Remove 'Bearer ' prefix
     
     try:
-        session = Session.objects.filter(session_token=session_token).first()
+        session = Session.find_by_token(session_token)
         
         if not session:
             return Response({
@@ -427,7 +643,15 @@ def auth_me_view(request):
                     'email': session.user.email,
                     'username': session.user.username,
                     'full_name': session.user.full_name,
-                    'role': session.user.role
+                    'role': session.user.role,
+                    'school_level': session.user.school_level,
+                    'school_name': session.user.school_name,
+                    'client_type': session.user.client_type,
+                    'sex': session.user.sex,
+                    'age': session.user.age,
+                    'region': session.user.region,
+                    'category': session.user.category,
+                    'terms_version': session.user.terms_version
                 },
                 'is_guest': False
             })
@@ -468,10 +692,10 @@ def auth_change_password_view(request):
         }, status=status.HTTP_400_BAD_REQUEST)
     
     # Validate new password length
-    if len(new_password) < 6:
+    if len(new_password) < 8:
         return Response({
             'success': False,
-            'message': 'New password must be at least 6 characters'
+            'message': 'New password must be at least 8 characters long'
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
@@ -532,8 +756,8 @@ def auth_reset_password_view(request):
             break
     if not user:
         return Response({'success': False, 'message': 'Invalid or expired token'}, status=status.HTTP_400_BAD_REQUEST)
-    if len(password) < 6:
-        return Response({'success': False, 'message': 'Password must be at least 6 characters'}, status=status.HTTP_400_BAD_REQUEST)
+    if len(password) < 8:
+        return Response({'success': False, 'message': 'Password must be at least 8 characters long'}, status=status.HTTP_400_BAD_REQUEST)
     user.set_password(password)
     user.save()
     # Remove token after use

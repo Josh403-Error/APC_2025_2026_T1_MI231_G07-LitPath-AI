@@ -351,6 +351,132 @@ class RAGService:
         
         return chunks
 
+    def _extract_requested_result_count(self, question, default_count=10, max_count=15):
+        """Extract desired number of results from user query (e.g., 'give me 5')."""
+        if not question:
+            return default_count
+
+        number_words = {
+            "one": 1,
+            "two": 2,
+            "three": 3,
+            "four": 4,
+            "five": 5,
+            "six": 6,
+            "seven": 7,
+            "eight": 8,
+            "nine": 9,
+            "ten": 10,
+            "eleven": 11,
+            "twelve": 12,
+            "thirteen": 13,
+            "fourteen": 14,
+            "fifteen": 15,
+        }
+
+        numeric_token_pattern = r"(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen)"
+
+        def parse_count_token(token):
+            token = (token or "").strip().lower()
+            if not token:
+                return None
+            if token.isdigit():
+                return int(token)
+            return number_words.get(token)
+
+        # Prefer explicit phrases that usually indicate result count intent.
+        patterns = [
+            rf"\b(?:give|show|return|display|provide|find|get|list)\s+me\s+{numeric_token_pattern}\b",
+            rf"\b(?:top|first|limit(?:ed)?\s+to)\s+{numeric_token_pattern}\b",
+            rf"\b{numeric_token_pattern}\s+(?:results?|documents?|theses?|papers?)\b",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, question, flags=re.IGNORECASE)
+            if match:
+                if not match.lastindex:
+                    continue
+                value = parse_count_token(match.group(1))
+                if value is None:
+                    continue
+                return max(1, min(value, max_count))
+
+        return default_count
+
+    def _extract_answer_preferences(self, question):
+        """Extract explicit user format/structure preferences for answer generation.
+
+        Returns a list of prompt instruction bullet lines. Empty list means no explicit
+        preference was detected, so default formatting rules should be used.
+        """
+        if not question:
+            return []
+
+        q = question.lower()
+        preferences = []
+
+        # Output structure/format requests
+        if re.search(r"\b(table|tabular|in a table)\b", q):
+            preferences.append("- Format the answer as a Markdown table where the source content supports tabular comparison.")
+        elif re.search(r"\b(bullet(?:ed)?|bullet points?|list|numbered)\b", q):
+            preferences.append("- Format the answer using concise bullet points or a numbered list as requested.")
+        elif re.search(r"\b(paragraph(?:s)?|essay|narrative)\b", q):
+            preferences.append("- Format the answer in coherent academic paragraphs.")
+
+        # Length/detail requests
+        if re.search(r"\b(one sentence|single sentence)\b", q):
+            preferences.append("- Keep the answer to one sentence when source support allows.")
+        elif re.search(r"\b(brief|concise|short|summar(?:y|ize)|tldr)\b", q):
+            preferences.append("- Keep the answer concise while preserving key cited facts.")
+        elif re.search(r"\b(detailed|in[- ]depth|comprehensive|elaborate|full detail)\b", q):
+            preferences.append("- Provide a detailed answer with complete source-grounded explanation.")
+
+        # Organizational requests
+        if re.search(r"\b(step[- ]by[- ]step|steps?)\b", q):
+            preferences.append("- Organize the answer in clear step-by-step form.")
+        if re.search(r"\b(compare|comparison|versus|vs\.?|differences?)\b", q):
+            preferences.append("- Present comparisons in a clearly separated structure by item or criterion.")
+
+        return preferences
+
+    def _is_broad_listing_query(self, question):
+        """Detect broad title/list discovery intents (e.g., 'give me 10 thesis titles')."""
+        if not question:
+            return False
+
+        q = question.lower()
+        asks_for_list = bool(re.search(r"\b(list|show|give|provide|return|find|get)\b", q))
+        asks_for_titles = bool(re.search(r"\b(thesis|theses|titles?|papers?|documents?|publications?)\b", q))
+        asks_for_count = self._extract_requested_result_count(q, default_count=0, max_count=100) > 0
+        return asks_for_list and asks_for_titles and asks_for_count
+
+    def _is_more_results_query(self, question):
+        """Detect follow-up requests asking for additional/new results."""
+        if not question:
+            return False
+        q = question.lower()
+        has_more_word = bool(re.search(r"\b(more|additional|another|next)\b", q))
+        has_result_noun = bool(re.search(r"\b(results?|documents?|theses?|thesis|titles?|papers?|publications?)\b", q))
+        return has_more_word and has_result_noun
+
+    def _get_previous_specific_query(self, conversation_history, current_query):
+        """Get last non-'more results' query from history for constraint carry-over."""
+        if not conversation_history:
+            return None
+
+        current_lower = (current_query or "").strip().lower()
+        for turn in reversed(conversation_history):
+            q = (turn or {}).get("query", "")
+            q_norm = q.strip()
+            if not q_norm:
+                continue
+            if q_norm.lower() == current_lower:
+                continue
+            if self._is_more_results_query(q_norm):
+                continue
+            return q_norm
+        return None
+
     
     def index_txt_files_directly(self, txt_folder, chunk_size=500):
         """Index TXT files directly without requiring PDF files (batch embedding)"""
@@ -584,7 +710,7 @@ class RAGService:
         
         return recovered_chunks
     
-    def search(self, question, top_n=30, distance_threshold=1.5, subjects=None, year=None, year_start=None, year_end=None, rerank_top_k=50, request_id=None):
+    def search(self, question, top_n=30, distance_threshold=1.5, subjects=None, year=None, year_start=None, year_end=None, rerank_top_k=50, request_id=None, exclude_files=None, conversation_history=None):
         if request_id is None:
             import uuid
             request_id = str(uuid.uuid4())
@@ -594,9 +720,18 @@ class RAGService:
         if not RAGService._initialized:
             print(f"[RAG] Lazy initialization triggered by search request {request_id}")
             RAGService.initialize()
+
+        more_results_query = self._is_more_results_query(question)
+        retrieval_question = question
+        if more_results_query:
+            previous_specific_query = self._get_previous_specific_query(conversation_history or [], question)
+            if previous_specific_query:
+                retrieval_question = f"{question}. Use the same criteria as this previous request: {previous_specific_query}"
+                print(f"[RAG] More-results intent detected; carrying previous criteria: '{previous_specific_query}'")
+
         # Step 1: LLM-based query rewriting (Gemini)
         rewritten_question = None
-        if self.api_key:
+        if self.api_key and not more_results_query:
             try:
                 client = genai.Client(api_key=self.api_key)
                 rewrite_prompt = (
@@ -604,13 +739,15 @@ class RAGService:
                     "Task:\n"
                     "- Rewrite the user's query to make it clear, specific, and suitable for an academic research database.\n"
                     "- Preserve the original meaning and intent exactly.\n"
+                    "- Preserve explicit constraints such as topic keywords, requested result count, and year/date ranges.\n"
+                    "- Remove output-format instructions (e.g., table/bullets) from retrieval wording but keep retrieval constraints intact.\n"
                     "- Do NOT add new information or assumptions.\n"
                     "- Correct typographical or spelling errors in any language.\n"
                     "- If the query is in Tagalog, Taglish, Cebuano, or any Philippine language or dialect, translate it into clear standard English.\n"
                     "- If the query is already clear, return it unchanged.\n"
                     "- Do NOT answer the question.\n"
                     "- Output only the final rewritten query with no additional explanation.\n\n"
-                    f"User Query: {question}\n\n"
+                    f"User Query: {retrieval_question}\n\n"
                     "Rewritten Query:"
                 )
                 print(f"[RAG-DEBUG] Request ID {request_id}: Sending query rewrite prompt to LLM.")
@@ -626,12 +763,14 @@ class RAGService:
                 )
                 if hasattr(response, "text") and response.text.strip():
                     rewritten_question = response.text.strip()
-                    print(f"[RAG] LLM query rewrite: '{question}' -> '{rewritten_question}' [Request ID: {request_id}]")
+                    print(f"[RAG] LLM query rewrite: '{retrieval_question}' -> '{rewritten_question}' [Request ID: {request_id}]")
             except Exception as e:
                 print(f"[RAG] Query rewriting failed: {e} [Request ID: {request_id}]")
         if not rewritten_question:
             print(f"[RAG-DEBUG] Request ID {request_id}: Falling back to original query for rerank.")
-            rewritten_question = question
+            rewritten_question = retrieval_question
+
+        broad_listing_query = self._is_broad_listing_query(question)
 
         # Step 2: Use rewritten query directly (no expansion)
         print(f"[RAG-DEBUG] Request ID {request_id}: Embedding query.")
@@ -675,10 +814,19 @@ class RAGService:
 
         # Collect candidate chunks (vector search)
         candidate_chunks = []
+        excluded_files_set = set()
+        if exclude_files:
+            excluded_files_set = {
+                str(f).strip().lower()
+                for f in exclude_files
+                if f is not None and str(f).strip()
+            }
         print(f"[RAG-DEBUG] Request ID {request_id}: Filtering candidate chunks.")
         for i in range(len(results["documents"][0])):
             meta = results["metadatas"][0][i]
             file_name = meta.get("file", meta.get("pdf", ""))
+            if excluded_files_set and str(file_name).strip().lower() in excluded_files_set:
+                continue
             score = float(results["distances"][0][i])
             if score < distance_threshold and file_name:
                 # Apply year range filter if needed (post-query filtering for large ranges)
@@ -700,6 +848,11 @@ class RAGService:
         # === Reranker step using Gemini 2.5 Flash for fast semantic selection ===
         # Limit rerank candidates and chunk size to fit LLM context window
         max_rerank_candidates = min(rerank_top_k, 15)  # hard cap for LLM context
+        requested_result_count = self._extract_requested_result_count(
+            question,
+            default_count=10,
+            max_count=max_rerank_candidates,
+        )
         max_chunk_chars = 500  # give reranker enough context per chunk
         rerank_candidates = candidate_chunks[:max_rerank_candidates]
         selected_indices = []
@@ -709,7 +862,7 @@ class RAGService:
                 debug_prompt = (
                     "You are a document chunk selector for an academic retrieval system.\n\n"
                     "Task:\n"
-                    "- Given a user query and numbered document chunks (with metadata: title, author, year, subjects), select up to 10 chunks that are relevant to answering the query.\n"
+                    f"- Given a user query and numbered document chunks (with metadata: title, author, year, subjects), select up to {requested_result_count} chunks that are relevant to answering the query.\n"
                     "- Consider both the chunk text AND the metadata (title, author, year, subjects) when judging relevance.\n"
                     "- For broad or exploratory queries (e.g. 'find theses about agriculture', 'thesis from 2020-2025'), select chunks from distinct theses that match the criteria.\n"
                     "- For subject/topic queries (e.g. 'biology thesis', 'computer science research'), match against the Subjects metadata field.\n"
@@ -779,9 +932,12 @@ class RAGService:
         # Select chunks based on LLM indices (1-based) with robust error handling
         selected_chunks = []
         try:
+            seen_chunk_positions = set()
             for idx in selected_indices:
                 if isinstance(idx, int) and 1 <= idx <= len(rerank_candidates):
-                    selected_chunks.append(rerank_candidates[idx-1])
+                    if idx not in seen_chunk_positions:
+                        selected_chunks.append(rerank_candidates[idx-1])
+                        seen_chunk_positions.add(idx)
                 else:
                     print(f"[RAG] Ignoring out-of-range LLM index: {idx}")
         except Exception as e:
@@ -793,24 +949,88 @@ class RAGService:
         if not selected_chunks:
             if selected_indices == []:
                 # LLM returned [] (no chunks deemed relevant) — show no results, no fallback
-                pass  # selected_chunks remains empty
+                if broad_listing_query or more_results_query:
+                    # For broad listing intents, use top filtered candidates instead of empty set.
+                    print("[RAG] Broad-listing/more-results fallback: using top filtered candidates")
+                    selected_chunks = rerank_candidates[:requested_result_count]
+                else:
+                    pass  # selected_chunks remains empty
             else:
                 # LLM error or parse failure — fallback to top by distance
                 print("[RAG] Reranker fallback: LLM error or parse failure — using top by distance")
-                selected_chunks = rerank_candidates[:10]
+                selected_chunks = rerank_candidates[:requested_result_count]
+
+        def get_doc_key(chunk_obj):
+            """Stable key for document-level dedupe/fill."""
+            meta = chunk_obj.get("meta", {}) if isinstance(chunk_obj, dict) else {}
+            raw_title = (meta.get("title") or "").strip().lower()
+            raw_file = (meta.get("file") or meta.get("pdf") or "").strip().lower()
+            if raw_title and raw_title != "[unknown title]":
+                return f"title::{raw_title}"
+            if raw_file:
+                return f"file::{raw_file}"
+            return None
+
+        # Exact-fill behavior: ensure we reach the requested unique-document count when possible.
+        ranked_chunks_for_docs = list(selected_chunks)
+        if ranked_chunks_for_docs and requested_result_count > 0:
+            used_doc_keys = set()
+            for chunk_obj in ranked_chunks_for_docs:
+                key = get_doc_key(chunk_obj)
+                if key:
+                    used_doc_keys.add(key)
+
+            for chunk_obj in rerank_candidates:
+                if len(used_doc_keys) >= requested_result_count:
+                    break
+                key = get_doc_key(chunk_obj)
+                if key and key in used_doc_keys:
+                    continue
+                ranked_chunks_for_docs.append(chunk_obj)
+                if key:
+                    used_doc_keys.add(key)
+
+            # If rerank window is too narrow, continue filling from full filtered candidates.
+            if len(used_doc_keys) < requested_result_count:
+                for chunk_obj in candidate_chunks:
+                    if len(used_doc_keys) >= requested_result_count:
+                        break
+                    key = get_doc_key(chunk_obj)
+                    if key and key in used_doc_keys:
+                        continue
+                    ranked_chunks_for_docs.append(chunk_obj)
+                    if key:
+                        used_doc_keys.add(key)
+        else:
+            ranked_chunks_for_docs = list(selected_chunks)
+            if broad_listing_query and requested_result_count > 0:
+                used_doc_keys = set()
+                for chunk_obj in ranked_chunks_for_docs:
+                    key = get_doc_key(chunk_obj)
+                    if key:
+                        used_doc_keys.add(key)
+                for chunk_obj in candidate_chunks:
+                    if len(used_doc_keys) >= requested_result_count:
+                        break
+                    key = get_doc_key(chunk_obj)
+                    if key and key in used_doc_keys:
+                        continue
+                    ranked_chunks_for_docs.append(chunk_obj)
+                    if key:
+                        used_doc_keys.add(key)
 
         # Prepare documents and top_chunks for output
         top_chunks = []
         documents = []
-        seen_titles = set()
+        seen_doc_keys = set()
         
         # Collect all unique file names for stats query
-        all_files = list(set(c["meta"].get("file", c["meta"].get("pdf", "")) for c in selected_chunks if c["meta"].get("file") or c["meta"].get("pdf")))
+        all_files = list(set(c["meta"].get("file", c["meta"].get("pdf", "")) for c in ranked_chunks_for_docs if c["meta"].get("file") or c["meta"].get("pdf")))
         
         # Get view counts and ratings for all documents
         doc_stats = self.get_document_stats(all_files)
         
-        for c in selected_chunks:
+        for c in ranked_chunks_for_docs:
             meta = c["meta"]
             file_name = meta.get("file", meta.get("pdf", ""))
             
@@ -837,10 +1057,11 @@ class RAGService:
                 meta.get("university", ""),
                 field_type='university'
             )
-            # Only add one chunk per unique title
-            if title in seen_titles:
+            # Only add one chunk per unique document key
+            doc_key = get_doc_key(c) or f"title::{title.strip().lower()}"
+            if doc_key in seen_doc_keys:
                 continue
-            seen_titles.add(title)
+            seen_doc_keys.add(doc_key)
             doc = {
                 "title": title,
                 "author": author,
@@ -857,6 +1078,8 @@ class RAGService:
             }
             documents.append(doc)
             top_chunks.append(c)
+            if len(documents) >= requested_result_count:
+                break
 
         return top_chunks, documents, distance_threshold
     
@@ -949,19 +1172,25 @@ class RAGService:
             print(f"[RAG] Error getting filters: {e}")
             return {"subjects": [], "years": []}
     
-    def generate_overview(self, top_chunks, question, distance_threshold, conversation_history=None, relevance_info=None):
+    def generate_overview(self, top_chunks, question, distance_threshold, conversation_history=None, relevance_info=None, continuation_context=None):
         """Always generate AI overview using context-aware method with conversation context and improved prompt."""
         # Filter relevant chunks by distance threshold if available
         relevant_chunks = [c for c in top_chunks if c.get("score", 0) < distance_threshold] if top_chunks and "score" in top_chunks[0] else top_chunks
         if not relevant_chunks:
             return "No relevant information found for your query."
         # Use the context-aware overview method for all cases
-        return self._generate_with_context(relevant_chunks, question, conversation_history, relevance_info)
+        return self._generate_with_context(relevant_chunks, question, conversation_history, relevance_info, continuation_context)
     
-    def _generate_with_context(self, top_chunks, question, conversation_history=None, relevance_info=None):
+    def _generate_with_context(self, top_chunks, question, conversation_history=None, relevance_info=None, continuation_context=None):
         """Generate AI overview with conversation context for follow-up questions"""
         if not top_chunks:
             return 'No results found for your query.'
+
+        requested_preferences = self._extract_answer_preferences(question)
+        if requested_preferences:
+            format_instruction_block = "\n".join(requested_preferences)
+        else:
+            format_instruction_block = "- Write 2–4 clear academic paragraphs (adjust length based on complexity)."
         
         # Build document metadata summary
         doc_infos = []
@@ -1006,6 +1235,25 @@ class RAGService:
                 + "\n---\n".join(history_parts)
                 + "\n\nThe user is now asking a follow-up question. Use the conversation context to understand references like 'it', 'this', 'that', 'compare', etc.\n"
             )
+
+        continuation_note = ""
+        continuation_instruction = ""
+        if continuation_context and continuation_context.get("is_more_results_request"):
+            prev_count = continuation_context.get("previous_results_count", 0)
+            requested_additional = continuation_context.get("requested_additional_count")
+            target_total = continuation_context.get("target_total_count")
+            continuation_note = (
+                "\n\nCONTINUATION CONTEXT:\n"
+                "- This is an additional-results continuation request.\n"
+                f"- Previously shown unique publications: {prev_count}.\n"
+                f"- Newly retrieved publications in this turn: {len(doc_infos)}.\n"
+                f"- Requested additional publications: {requested_additional if requested_additional is not None else 'not explicitly specified'}.\n"
+                f"- Target combined total publications: {target_total if target_total is not None else 'not explicitly specified'}.\n"
+            )
+            continuation_instruction = (
+                "- This is a continuation request. Account for previously shown publications from CONTINUATION CONTEXT when stating totals and availability.\n"
+                "- Do not claim there is no information unless the combined total truly cannot be reached with previous + current results."
+            )
         
         # Add relevance warning if content might not fully answer the question
         relevance_warning = ""
@@ -1026,7 +1274,7 @@ class RAGService:
         {chr(10).join(doc_infos)}
 
         CONTEXT FROM SOURCES:
-        {chunk_context}{history_context}{relevance_warning}
+        {chunk_context}{history_context}{continuation_note}{relevance_warning}
         USER QUESTION: {question}
 
         INSTRUCTIONS:
@@ -1038,9 +1286,11 @@ class RAGService:
         - Do NOT add outside knowledge.
         - Do NOT make assumptions or logical leaps beyond what is written.
         - Combine information across sources only when the connection is explicitly supported.
-        - Write 2–4 clear academic paragraphs (adjust length based on complexity).
-        - End every factual sentence with its citation in this format: [1] or [1] [2].
-        - NEVER place citations in the middle of a sentence.
+        {continuation_instruction}
+        {format_instruction_block}
+        - Use citations only from the AVAILABLE SOURCES list (top 10 unique reranked documents).
+        - Place citations only at the end of each paragraph, in this format: [1] or [1] [2].
+        - If more than 5 citations apply, keep only the first 5 citations.
         - NEVER use combined citation format like [1, 2].
 
         3. If the sources do NOT contain sufficient information:
@@ -1117,13 +1367,19 @@ class RAGService:
         
         return answer
     
-    def generate_overview_stream(self, top_chunks, question, distance_threshold, conversation_history=None, relevance_info=None):
+    def generate_overview_stream(self, top_chunks, question, distance_threshold, conversation_history=None, relevance_info=None, continuation_context=None):
         """Stream AI overview token-by-token using Gemini streaming API. Yields (event, data) tuples."""
         # Filter relevant chunks
         relevant_chunks = [c for c in top_chunks if c.get("score", 0) < distance_threshold] if top_chunks and "score" in top_chunks[0] else top_chunks
         if not relevant_chunks:
             yield ("done", "No relevant information found for your query.")
             return
+
+        requested_preferences = self._extract_answer_preferences(question)
+        if requested_preferences:
+            format_instruction_block = "\n".join(requested_preferences)
+        else:
+            format_instruction_block = "- Write 2–4 clear academic paragraphs (adjust length based on complexity)."
 
         # Build the same prompt as _generate_with_context
         doc_infos = []
@@ -1164,6 +1420,25 @@ class RAGService:
                 + "\n\nThe user is now asking a follow-up question. Use the conversation context to understand references like 'it', 'this', 'that', 'compare', etc.\n"
             )
 
+        continuation_note = ""
+        continuation_instruction = ""
+        if continuation_context and continuation_context.get("is_more_results_request"):
+            prev_count = continuation_context.get("previous_results_count", 0)
+            requested_additional = continuation_context.get("requested_additional_count")
+            target_total = continuation_context.get("target_total_count")
+            continuation_note = (
+                "\n\nCONTINUATION CONTEXT:\n"
+                "- This is an additional-results continuation request.\n"
+                f"- Previously shown unique publications: {prev_count}.\n"
+                f"- Newly retrieved publications in this turn: {len(doc_infos)}.\n"
+                f"- Requested additional publications: {requested_additional if requested_additional is not None else 'not explicitly specified'}.\n"
+                f"- Target combined total publications: {target_total if target_total is not None else 'not explicitly specified'}.\n"
+            )
+            continuation_instruction = (
+                "- This is a continuation request. Account for previously shown publications from CONTINUATION CONTEXT when stating totals and availability.\n"
+                "- Do not claim there is no information unless the combined total truly cannot be reached with previous + current results."
+            )
+
         relevance_warning = ""
         if relevance_info and relevance_info.get('match_ratio', 1.0) < 0.5:
             missing = ', '.join(list(relevance_info.get('missing_keywords', set()))[:5])
@@ -1181,7 +1456,7 @@ class RAGService:
         {chr(10).join(doc_infos)}
 
         CONTEXT FROM SOURCES:
-        {chunk_context}{history_context}{relevance_warning}
+        {chunk_context}{history_context}{continuation_note}{relevance_warning}
         USER QUESTION: {question}
 
         INSTRUCTIONS:
@@ -1193,9 +1468,11 @@ class RAGService:
         - Do NOT add outside knowledge.
         - Do NOT make assumptions or logical leaps beyond what is written.
         - Combine information across sources only when the connection is explicitly supported.
-        - Write 2–4 clear academic paragraphs (adjust length based on complexity).
-        - End every factual sentence with its citation in this format: [1] or [1] [2].
-        - NEVER place citations in the middle of a sentence.
+        {continuation_instruction}
+        {format_instruction_block}
+        - Use citations only from the AVAILABLE SOURCES list (top 10 unique reranked documents).
+        - Place citations only at the end of each paragraph, in this format: [1] or [1] [2].
+        - If more than 5 citations apply, keep only the first 5 citations.
         - NEVER use combined citation format like [1, 2].
 
         3. If the sources do NOT contain sufficient information:
@@ -1266,68 +1543,44 @@ class RAGService:
     def _process_answer_references(self, raw_answer, seen_pdfs, top_chunks):
         """Process and rearrange references in the answer"""
         ref_pattern = re.compile(r'\[(\d+)\]')
-        
-        # Find order of first appearance
-        paragraphs = re.split(r'\n\s*\n', raw_answer)
-        ref_order = []
-        for para in paragraphs:
-            for ref in ref_pattern.findall(para):
-                if ref not in ref_order:
-                    ref_order.append(ref)
-        
-        allowed_numbers = [str(n) for n in range(1, len(seen_pdfs)+1)]
-        ref_order = [r for r in ref_order if r in allowed_numbers]
-        
-        for n in allowed_numbers:
-            if n not in ref_order:
-                ref_order.append(n)
-        
-        old_to_new = {old: str(i+1) for i, old in enumerate(ref_order)}
-        
-        def replace_refs(text):
-            return ref_pattern.sub(lambda m: f"[{old_to_new.get(m.group(1), m.group(1))}]", text)
-        
-        raw_answer_new = replace_refs(raw_answer)
-        
-        # Move references to end of paragraphs
+
+        # Only allow references that map to the top 10 unique reranked documents.
+        allowed_numbers = [str(n) for n in range(1, len(seen_pdfs) + 1)]
+        # If there are more than 5 candidate documents, only cite from the first 5.
+        citation_pool = allowed_numbers[:5]
+
+        # Remove citations that are outside the allowed top-source set.
+        raw_answer_new = ref_pattern.sub(
+            lambda m: f"[{m.group(1)}]" if m.group(1) in citation_pool else "",
+            raw_answer,
+        )
+
+        # Move references to the end of each paragraph.
         def process_paragraphs(text):
             paragraphs = re.split(r'\n\s*\n', text)
             processed = []
-            assigned_refs = []
             
             if paragraphs and ref_pattern.findall(paragraphs[-1]) and not re.search(r'[a-zA-Z]', paragraphs[-1]):
                 paragraphs = paragraphs[:-1]
-            
-            n_body = max(1, len(paragraphs)-1)
+
             for i, para in enumerate(paragraphs):
                 refs = ref_pattern.findall(para)
                 unique_refs = []
                 for r in refs:
-                    if r not in unique_refs:
+                    if r in citation_pool and r not in unique_refs:
                         unique_refs.append(r)
-                    if len(unique_refs) == 2:
+                    if len(unique_refs) == 5:
                         break
                 
                 para_clean = ref_pattern.sub('', para).strip()
                 para_clean = re.sub(r'\s+\.$', '.', para_clean)
-                
-                if i < n_body and unique_refs:
-                    for r in unique_refs:
-                        para_clean += f'[{r}]'
-                        assigned_refs.append(r)
+
+                if unique_refs:
+                    para_clean = para_clean.rstrip()
+                    para_clean += ' ' + ''.join(f'[{r}]' for r in unique_refs)
                 
                 processed.append(para_clean)
-            
-            if processed:
-                summary_refs = []
-                for r in assigned_refs:
-                    if r not in summary_refs:
-                        summary_refs.append(r)
-                
-                processed[-1] = re.sub(r'\s+\.$', '.', processed[-1])
-                for r in summary_refs:
-                    processed[-1] += f'[{r}]'
-            
+
             return '\n\n'.join(processed)
         
         processed_answer = process_paragraphs(raw_answer_new)

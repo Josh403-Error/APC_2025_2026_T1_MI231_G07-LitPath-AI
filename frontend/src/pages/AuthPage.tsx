@@ -1,60 +1,148 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { BookOpen, User, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import dostLogo from "../assets/images/dost-logo.png";
 import dostBg from "../assets/images/dost.png";
 import { API_BASE_URL } from '../services/api';
 
+type AuthMode = 'welcome' | 'login' | 'signup' | 'forgot';
+
 const AuthPage = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { login, continueAsGuest, loading: authLoading } = useAuth();
+    const { login, register, continueAsGuest } = useAuth();
 
-    // Check for ?mode=login in URL
-    const getModeFromUrl = (search) => {
+    const getModeFromUrl = (search: string): AuthMode => {
         const urlParams = new URLSearchParams(search);
-        return urlParams.get('mode') === 'login' ? 'login' : 'welcome';
+        const modeParam = urlParams.get('mode');
+        if (modeParam === 'login') return 'login';
+        if (modeParam === 'signup') return 'signup';
+        return 'welcome';
     };
-    const [mode, setMode] = useState(getModeFromUrl(location.search)); // 'welcome' or 'login' or 'forgot'
+    const [mode, setMode] = useState<AuthMode>(getModeFromUrl(location.search));
 
-    // Keep mode in sync with URL (for guest login button after logout)
+    // Keep mode in sync with URL for direct login/signup links
     useEffect(() => {
         setMode(getModeFromUrl(location.search));
     }, [location.search]);
-        // Forgot password state
-        const [resetEmail, setResetEmail] = useState('');
-        const [resetMessage, setResetMessage] = useState('');
-        const [resetLoading, setResetLoading] = useState(false);
 
-        const handleForgotSubmit = async (e) => {
-            e.preventDefault();
-            setResetMessage('');
-            setResetLoading(true);
-            try {
-                // Call backend endpoint for password reset
-                const response = await fetch(`${API_BASE_URL}/auth/password-reset-request/`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: resetEmail })
-                });
-                const data = await response.json();
-                setResetMessage(data.message || 'If this email exists, a reset link will be sent.');
-            } catch (err) {
-                setResetMessage('Error sending reset request.');
-            } finally {
-                setResetLoading(false);
-            }
-        };
+    // Forgot password state
+    const [resetEmail, setResetEmail] = useState('');
+    const [resetMessage, setResetMessage] = useState('');
+    const [resetLoading, setResetLoading] = useState(false);
+
+    const handleForgotSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        setResetMessage('');
+        setResetLoading(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/auth/password-reset-request/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: resetEmail })
+            });
+            const data = await response.json();
+            setResetMessage(data.message || 'If this email exists, a reset link will be sent.');
+        } catch (err) {
+            setResetMessage('Error sending reset request.');
+        } finally {
+            setResetLoading(false);
+        }
+    };
+
+    const schoolLevelChoices = [
+        { value: 'Junior High School', label: 'Junior High School' },
+        { value: 'Senior High School', label: 'Senior High School' },
+        { value: 'Undergraduate', label: 'Undergraduate' },
+        { value: 'Graduate', label: 'Graduate' },
+        { value: 'Postgraduate', label: 'Postgraduate' }
+    ];
+
+    const clientTypeChoices = [
+        { value: 'Citizen', label: 'Citizen' },
+        { value: 'Business', label: 'Business' },
+        { value: 'Government', label: 'Government (Employee/Agency)' }
+    ];
+
+    const sexChoices = [
+        { value: 'Female', label: 'Female' },
+        { value: 'Male', label: 'Male' },
+        { value: 'Prefer not to say', label: 'Prefer not to say' }
+    ];
+
+    const ageChoices = [
+        { value: '10 and below', label: '10 years old and below' },
+        { value: '11-15', label: '11 - 15 years old' },
+        { value: '16-20', label: '16 - 20 years old' },
+        { value: '21-25', label: '21 - 25 years old' },
+        { value: '26-30', label: '26 - 30 years old' },
+        { value: '31-35', label: '31 - 35 years old' },
+        { value: '36-40', label: '36 - 40 years old' },
+        { value: '41-45', label: '41 - 45 years old' },
+        { value: '46-50', label: '46 - 50 years old' },
+        { value: '51-55', label: '51 - 55 years old' },
+        { value: '56-60', label: '56 - 60 years old' },
+        { value: '61 and above', label: '61 years old and above' }
+    ];
+
+    const regionChoices = [
+        { value: 'NCR', label: '[NCR] National Capital Region' },
+        { value: 'CAR', label: '[CAR] Cordillera Administrative Region' },
+        { value: 'R01', label: '[R01] Region 1 (Ilocos Region)' },
+        { value: 'R02', label: '[R02] Region 2 (Cagayan Valley Region)' },
+        { value: 'R03', label: '[R03] Region 3 (Central Luzon Region)' },
+        { value: 'R4A', label: '[R4A] Region 4A (CALABARZON Region)' },
+        { value: 'R4B', label: '[R4B] Region 4B (MIMAROPA Region)' },
+        { value: 'R05', label: '[R05] Region 5 (Bicol Region)' },
+        { value: 'R06', label: '[R06] Western Visayas Region' },
+        { value: 'R07', label: '[R07] Central Visayas Region' },
+        { value: 'R08', label: '[R08] Eastern Visayas Region' },
+        { value: 'R09', label: '[R09] Zamboanga Peninsula Region' },
+        { value: 'R10', label: '[R10] Northern Mindanao Region' },
+        { value: 'R11', label: '[R11] Davao Region' },
+        { value: 'R12', label: '[R12] SOCCSKSARGEN Region' },
+        { value: 'R13', label: '[R13] Caraga Administrative Region' },
+        { value: 'BARMM', label: '[BARMM] Bangsamoro Autonomous Region in Muslim Mindanao' },
+        { value: 'N/A', label: '[N/A] Not Applicable (Overseas)' }
+    ];
+
+    const categoryChoices = [
+        { value: 'Student', label: 'Student' },
+        { value: 'DOST Employee', label: 'DOST Employee' },
+        { value: 'Other Government Employee', label: 'Other Government Employee' },
+        { value: 'Librarian/Library Staff', label: 'Librarian/Library Staff' },
+        { value: 'Teaching Personnel', label: 'Teaching Personnel' },
+        { value: 'Administrative Personnel', label: 'Administrative Personnel' },
+        { value: 'Researcher', label: 'Researcher' }
+    ];
+
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [signupFullName, setSignupFullName] = useState('');
+    const [signupUsername, setSignupUsername] = useState('');
+    const [signupEmail, setSignupEmail] = useState('');
+    const [signupSchoolLevel, setSignupSchoolLevel] = useState('');
+    const [signupSchoolName, setSignupSchoolName] = useState('');
+    const [signupClientType, setSignupClientType] = useState('');
+    const [signupSex, setSignupSex] = useState('');
+    const [signupAge, setSignupAge] = useState('');
+    const [signupRegion, setSignupRegion] = useState('');
+    const [signupCategory, setSignupCategory] = useState('');
+    const [signupPassword, setSignupPassword] = useState('');
+    const [signupConfirmPassword, setSignupConfirmPassword] = useState('');
+    const [showSignupPassword, setShowSignupPassword] = useState(false);
+    const [showSignupConfirmPassword, setShowSignupConfirmPassword] = useState(false);
+    const [signupTermsAccepted, setSignupTermsAccepted] = useState(false);
     const [error, setError] = useState('');
+    const [successMessage, setSuccessMessage] = useState('');
     const [isLoading, setIsLoading] = useState(false);
 
-    const handleLogin = async (e) => {
+    const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setError('');
+        setSuccessMessage('');
         setIsLoading(true);
 
         try {
@@ -78,9 +166,63 @@ const AuthPage = () => {
         }
     };
 
+    const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        setError('');
+        setSuccessMessage('');
+
+        if (signupPassword !== signupConfirmPassword) {
+            setError('Passwords do not match.');
+            return;
+        }
+
+        if (signupPassword.length < 8) {
+            setError('Password must be at least 8 characters long.');
+            return;
+        }
+
+        if (!signupTermsAccepted) {
+            setError('Please accept the Terms and Conditions to continue.');
+            return;
+        }
+
+        setIsLoading(true);
+
+        try {
+            const result = await register({
+                email: signupEmail,
+                password: signupPassword,
+                username: signupUsername,
+                full_name: signupFullName,
+                school_level: signupSchoolLevel,
+                school_name: signupSchoolName,
+                client_type: signupClientType,
+                sex: signupSex,
+                age: signupAge,
+                region: signupRegion,
+                category: signupCategory,
+                terms_accepted: signupTermsAccepted,
+                terms_version: 'v2026-04-01'
+            });
+
+            if (result.success) {
+                setSuccessMessage('Account created successfully. Redirecting...');
+                navigate('/search');
+            } else {
+                setError(result.error || 'Sign up failed');
+            }
+        } catch (err) {
+            console.error('Signup error:', err);
+            setError('Connection error. Please try again.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const handleContinueAsGuest = async () => {
         setIsLoading(true);
         setError('');
+        setSuccessMessage('');
 
         try {
             const result = await continueAsGuest();
@@ -158,6 +300,15 @@ const AuthPage = () => {
                                 >
                                     <User className="w-5 h-5" />
                                     Login
+                                </button>
+
+                                <button
+                                    onClick={() => setMode('signup')}
+                                    disabled={isLoading}
+                                    className="w-full flex items-center justify-center gap-3 bg-white text-[#1E74BC] py-4 rounded-lg hover:bg-blue-50 transition-colors font-semibold text-lg border border-[#1E74BC] disabled:bg-gray-100"
+                                >
+                                    <BookOpen className="w-5 h-5" />
+                                    Create Account
                                 </button>
 
                                 <div className="relative my-6">
@@ -254,12 +405,316 @@ const AuthPage = () => {
                                 <button
                                     type="button"
                                     className="text-[#1E74BC] hover:underline text-sm"
+                                    onClick={() => { setMode('signup'); setError(''); }}
+                                >
+                                    Don't have an account? Sign up
+                                </button>
+                                <button
+                                    type="button"
+                                    className="text-[#1E74BC] hover:underline text-sm"
                                     onClick={() => { setMode('forgot'); setResetEmail(''); setResetMessage(''); }}
                                 >
                                     Forgot password?
                                 </button>
                                 <button
                                     onClick={() => { setMode('welcome'); setError(''); }}
+                                    className="text-gray-500 hover:underline text-sm"
+                                >
+                                    ← Back to options
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Signup Form */}
+                    {mode === 'signup' && (
+                        <div className="space-y-6">
+                            <div className="text-center mb-6">
+                                <h2 className="text-2xl font-bold text-gray-800">Create Your Account</h2>
+                                <p className="text-gray-600 mt-1">Set up your LitPath AI profile</p>
+                            </div>
+
+                            {error && (
+                                <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded text-sm">
+                                    {error}
+                                </div>
+                            )}
+
+                            {successMessage && (
+                                <div className="p-3 bg-green-100 border border-green-400 text-green-700 rounded text-sm">
+                                    {successMessage}
+                                </div>
+                            )}
+
+                            <form onSubmit={handleSignup} className="space-y-4">
+                                <div>
+                                    <label htmlFor="signupFullName" className="block text-sm font-medium text-gray-700 mb-1">
+                                        Full Name
+                                    </label>
+                                    <input
+                                        type="text"
+                                        id="signupFullName"
+                                        value={signupFullName}
+                                        onChange={(e) => setSignupFullName(e.target.value)}
+                                        placeholder="Juan Dela Cruz"
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        required
+                                        disabled={isLoading}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label htmlFor="signupUsername" className="block text-sm font-medium text-gray-700 mb-1">
+                                        Username
+                                    </label>
+                                    <input
+                                        type="text"
+                                        id="signupUsername"
+                                        value={signupUsername}
+                                        onChange={(e) => setSignupUsername(e.target.value)}
+                                        placeholder="username"
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        required
+                                        disabled={isLoading}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label htmlFor="signupEmail" className="block text-sm font-medium text-gray-700 mb-1">
+                                        Email
+                                    </label>
+                                    <input
+                                        type="email"
+                                        id="signupEmail"
+                                        value={signupEmail}
+                                        onChange={(e) => setSignupEmail(e.target.value)}
+                                        placeholder="you@example.com"
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        required
+                                        disabled={isLoading}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label htmlFor="signupSchoolLevel" className="block text-sm font-medium text-gray-700 mb-1">
+                                        School Level
+                                    </label>
+                                    <select
+                                        id="signupSchoolLevel"
+                                        value={signupSchoolLevel}
+                                        onChange={(e) => setSignupSchoolLevel(e.target.value)}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        required
+                                        disabled={isLoading}
+                                    >
+                                        <option value="" disabled>Select school level</option>
+                                        {schoolLevelChoices.map(choice => (
+                                            <option key={choice.value} value={choice.value}>{choice.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label htmlFor="signupSchoolName" className="block text-sm font-medium text-gray-700 mb-1">
+                                        School Name
+                                    </label>
+                                    <input
+                                        type="text"
+                                        id="signupSchoolName"
+                                        value={signupSchoolName}
+                                        onChange={(e) => setSignupSchoolName(e.target.value)}
+                                        placeholder="Your school or institution"
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        required
+                                        disabled={isLoading}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label htmlFor="signupClientType" className="block text-sm font-medium text-gray-700 mb-1">
+                                        Client Type
+                                    </label>
+                                    <select
+                                        id="signupClientType"
+                                        value={signupClientType}
+                                        onChange={(e) => setSignupClientType(e.target.value)}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        required
+                                        disabled={isLoading}
+                                    >
+                                        <option value="" disabled>Select client type</option>
+                                        {clientTypeChoices.map(choice => (
+                                            <option key={choice.value} value={choice.value}>{choice.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label htmlFor="signupSex" className="block text-sm font-medium text-gray-700 mb-1">
+                                        Sex
+                                    </label>
+                                    <select
+                                        id="signupSex"
+                                        value={signupSex}
+                                        onChange={(e) => setSignupSex(e.target.value)}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        required
+                                        disabled={isLoading}
+                                    >
+                                        <option value="" disabled>Select sex</option>
+                                        {sexChoices.map(choice => (
+                                            <option key={choice.value} value={choice.value}>{choice.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label htmlFor="signupAge" className="block text-sm font-medium text-gray-700 mb-1">
+                                        Age Range
+                                    </label>
+                                    <select
+                                        id="signupAge"
+                                        value={signupAge}
+                                        onChange={(e) => setSignupAge(e.target.value)}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        required
+                                        disabled={isLoading}
+                                    >
+                                        <option value="" disabled>Select age range</option>
+                                        {ageChoices.map(choice => (
+                                            <option key={choice.value} value={choice.value}>{choice.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label htmlFor="signupRegion" className="block text-sm font-medium text-gray-700 mb-1">
+                                        Region
+                                    </label>
+                                    <select
+                                        id="signupRegion"
+                                        value={signupRegion}
+                                        onChange={(e) => setSignupRegion(e.target.value)}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        required
+                                        disabled={isLoading}
+                                    >
+                                        <option value="" disabled>Select region</option>
+                                        {regionChoices.map(choice => (
+                                            <option key={choice.value} value={choice.value}>{choice.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label htmlFor="signupCategory" className="block text-sm font-medium text-gray-700 mb-1">
+                                        User Category
+                                    </label>
+                                    <select
+                                        id="signupCategory"
+                                        value={signupCategory}
+                                        onChange={(e) => setSignupCategory(e.target.value)}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        required
+                                        disabled={isLoading}
+                                    >
+                                        <option value="" disabled>Select user category</option>
+                                        {categoryChoices.map(choice => (
+                                            <option key={choice.value} value={choice.value}>{choice.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label htmlFor="signupPassword" className="block text-sm font-medium text-gray-700 mb-1">
+                                        Password
+                                    </label>
+                                    <div className="relative">
+                                        <input
+                                            type={showSignupPassword ? 'text' : 'password'}
+                                            id="signupPassword"
+                                            value={signupPassword}
+                                            onChange={(e) => setSignupPassword(e.target.value)}
+                                            placeholder="At least 8 characters"
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-12"
+                                            required
+                                            disabled={isLoading}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowSignupPassword(!showSignupPassword)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                                        >
+                                            {showSignupPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label htmlFor="signupConfirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
+                                        Confirm Password
+                                    </label>
+                                    <div className="relative">
+                                        <input
+                                            type={showSignupConfirmPassword ? 'text' : 'password'}
+                                            id="signupConfirmPassword"
+                                            value={signupConfirmPassword}
+                                            onChange={(e) => setSignupConfirmPassword(e.target.value)}
+                                            placeholder="Re-enter your password"
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 pr-12"
+                                            required
+                                            disabled={isLoading}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowSignupConfirmPassword(!showSignupConfirmPassword)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                                        >
+                                            {showSignupConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-start gap-2">
+                                    <input
+                                        id="signupTerms"
+                                        type="checkbox"
+                                        checked={signupTermsAccepted}
+                                        onChange={(e) => setSignupTermsAccepted(e.target.checked)}
+                                        className="mt-1"
+                                        disabled={isLoading}
+                                    />
+                                    <label htmlFor="signupTerms" className="text-sm text-gray-700">
+                                        * I hereby acknowledge that I am fully informed of the foregoing and that I
+                                        consent to the collection and processing of my Personal Data by DOST-STII. I
+                                        agree to the{' '}
+                                        <Link to="/terms-and-conditions" className="text-[#1E74BC] hover:underline font-medium" target="_blank" rel="noopener noreferrer">
+                                            Terms and Conditions
+                                        </Link>
+                                        .
+                                    </label>
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    disabled={isLoading}
+                                    className="w-full flex items-center justify-center gap-3 bg-[#1E74BC] text-white py-4 rounded-lg hover:bg-[#184d79] transition-colors font-semibold text-lg shadow-md disabled:bg-gray-400"
+                                >
+                                    {isLoading ? 'Creating account...' : 'Sign Up'}
+                                </button>
+                            </form>
+
+                            <div className="flex flex-col items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => { setMode('login'); setError(''); setSuccessMessage(''); }}
+                                    className="text-[#1E74BC] hover:underline text-sm"
+                                >
+                                    Already have an account? Login
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setMode('welcome'); setError(''); setSuccessMessage(''); }}
                                     className="text-gray-500 hover:underline text-sm"
                                 >
                                     ← Back to options

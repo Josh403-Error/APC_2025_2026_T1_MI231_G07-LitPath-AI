@@ -20,7 +20,29 @@ DJANGO_SECRET_KEY=your-secret-key-here
 DEBUG=True
 ALLOWED_HOSTS=localhost,127.0.0.1
 GEMINI_API_KEY=your-gemini-api-key-here
+
+# Auth hardening
+TERMS_VERSION=v2026-04-01
+REGISTER_RATE_LIMIT=10
+REGISTER_RATE_WINDOW_SECONDS=3600
+REQUIRE_CAPTCHA=false
+RECAPTCHA_SECRET_KEY=
+CAPTCHA_VERIFY_URL=https://www.google.com/recaptcha/api/siteverify
 ```
+
+### Auth Hardening Recommendations (Production)
+
+- `TERMS_VERSION`: bump whenever Terms and Conditions content changes.
+- `REGISTER_RATE_LIMIT`: set to `5`-`10` attempts.
+- `REGISTER_RATE_WINDOW_SECONDS`: set to `900`-`3600` seconds.
+- `REQUIRE_CAPTCHA`: set to `true`.
+- `RECAPTCHA_SECRET_KEY`: required when CAPTCHA is enabled.
+
+Behavior summary:
+
+- Registration endpoint (`POST /api/auth/register/`) enforces enum validation for school and CSM profile fields.
+- Registration endpoint rate-limits by client IP and returns HTTP `429` when exceeded.
+- When CAPTCHA is enabled, missing/invalid token returns HTTP `400`.
 
 ### 3. Run Migrations
 
@@ -182,6 +204,35 @@ python manage.py check
 ### Run tests
 ```bash
 python manage.py test
+```
+
+### Run hardening tests safely (PostgreSQL)
+
+Use this helper to terminate stale sessions before running tests.
+
+Set a dedicated test DB name in `.env` (recommended):
+
+```env
+TEST_DB_NAME=litpath_test_db
+```
+
+Default run (stable, keeps test DB):
+
+```bash
+python scripts/run_tests_safe.py
+```
+
+Useful options:
+
+```bash
+# Run a different test label
+python scripts/run_tests_safe.py --label rag_api.tests
+
+# Disable keepdb behavior
+python scripts/run_tests_safe.py --no-keepdb
+
+# Pass extra Django test args
+python scripts/run_tests_safe.py --label rag_api.tests.AuthRegisterHardeningTests -- --failfast
 ```
 
 ## Production Deployment

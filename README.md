@@ -120,6 +120,40 @@ Content-Type: application/json
 
 ---
 
+## 🔐 Auth Hardening Environment Variables
+
+Add these in `backend/.env` to control registration hardening:
+
+```env
+# Terms and consent audit
+TERMS_VERSION=v2026-04-01
+
+# Registration throttling (per client IP)
+REGISTER_RATE_LIMIT=10
+REGISTER_RATE_WINDOW_SECONDS=3600
+
+# CAPTCHA enforcement
+REQUIRE_CAPTCHA=false
+RECAPTCHA_SECRET_KEY=
+CAPTCHA_VERIFY_URL=https://www.google.com/recaptcha/api/siteverify
+```
+
+Recommended production values:
+
+- `TERMS_VERSION`: update this whenever terms text changes (example: `v2026-04-01`)
+- `REGISTER_RATE_LIMIT`: `5` to `10` attempts
+- `REGISTER_RATE_WINDOW_SECONDS`: `900` to `3600` seconds
+- `REQUIRE_CAPTCHA`: `true`
+- `RECAPTCHA_SECRET_KEY`: required when CAPTCHA is enabled
+- `CAPTCHA_VERIFY_URL`: keep default unless using a trusted proxy/enterprise verifier
+
+Notes:
+
+- Rate limiting is applied on `POST /api/auth/register/` by client IP.
+- If `REQUIRE_CAPTCHA=true`, registration rejects requests without a valid CAPTCHA token.
+
+---
+
 ## 🗂️ Database Schema
 
 See your ERD implementation in `backend/rag_api/models.py` (ready to add):

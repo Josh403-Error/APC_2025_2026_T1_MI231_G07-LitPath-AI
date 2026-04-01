@@ -3,8 +3,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
     Search, ChevronDown, Star, RefreshCw, BookOpen, User, Calendar,
-    MessageSquare, ArrowRight, LogOut, Settings, Eye, EyeOff, Trash2,
-    Key, ThumbsUp, ThumbsDown, ChevronLeft, ChevronRight, ShieldCheck,
+    MessageSquare, ArrowRight, LogOut, Settings, Eye, Trash2,
+    ThumbsUp, ThumbsDown, ChevronLeft, ChevronRight, ShieldCheck,
     Menu, GraduationCap, Quote, Bookmark, Copy
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -15,7 +15,7 @@ import { API_BASE_URL } from '../../services/api';
 import { formatSources } from '../../lib/formatSources';
 const LitPathAI = () => {
     // Auth context
-    const { user, isGuest, logout, startNewChat: authStartNewChat, getUserId, isStaff, changePassword, setUser } = useAuth();
+    const { user, isGuest, logout, startNewChat: authStartNewChat, getUserId, isStaff } = useAuth();
     
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState(null);
@@ -78,25 +78,6 @@ const LitPathAI = () => {
     const [hasSearchedInSession, setHasSearchedInSession] = useState(false);
     const [isLoadedFromHistory, setIsLoadedFromHistory] = useState(false);
     const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
-    const [showAccountSettings, setShowAccountSettings] = useState(false);
-    const [settingsTab, setSettingsTab] = useState('profile');
-    const [editFullName, setEditFullName] = useState(user?.full_name || '');
-    const [editUsername, setEditUsername] = useState(user?.username || '');
-
-    // Keep edit fields in sync with user object
-    useEffect(() => {
-        setEditFullName(user?.full_name || '');
-        setEditUsername(user?.username || '');
-    }, [user]);
-    const [currentPassword, setCurrentPassword] = useState('');
-    const [newPassword, setNewPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
-    const [deletePassword, setDeletePassword] = useState('');
-    const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-    const [showNewPassword, setShowNewPassword] = useState(false);
-    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-    const [showDeletePassword, setShowDeletePassword] = useState(false);
-    const [settingsLoading, setSettingsLoading] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -433,6 +414,119 @@ const LitPathAI = () => {
         return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     };
 
+    const TOPIC_STOP_WORDS = new Set([
+        'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of',
+        'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'be', 'been', 'have',
+        'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'can',
+        'what', 'which', 'who', 'whom', 'how', 'when', 'where', 'why', 'about', 'tell',
+        'show', 'find', 'give', 'me', 'more', 'explain', 'please'
+    ]);
+
+    const tokenizeTopicTerms = (text = '') => {
+        return new Set(
+            text
+                .toLowerCase()
+                .replace(/[^a-z0-9\s]/g, ' ')
+                .split(/\s+/)
+                .filter(token => token.length > 2 && !TOPIC_STOP_WORDS.has(token))
+        );
+    };
+
+    const hasFollowUpCue = (query = '') => {
+        const q = query.toLowerCase();
+        return /\b(it|its|this|that|these|those|they|them|their|same|similar|compare|comparison|difference|versus|vs)\b/.test(q)
+            || q.includes('what about')
+            || q.includes('how about')
+            || q.includes('more about')
+            || q.includes('explain further');
+    };
+
+    const hasHardTopicShiftCue = (query = '') => {
+        const q = query.toLowerCase();
+        const explicitShiftPhrases = [
+            'switch topic completely',
+            'switch topic',
+            'new topic',
+            'change topic',
+            'different topic',
+            'completely different topic',
+            'unrelated topic',
+            'let us change topic',
+            "let's change topic",
+            "let's switch topic",
+            'start a new topic',
+            'move to another topic'
+        ];
+        return explicitShiftPhrases.some(phrase => q.includes(phrase));
+    };
+
+    const isTopicShiftQuery = (query, history = []) => {
+        if (!query || !history.length) return false;
+        if (hasHardTopicShiftCue(query)) return true;
+        const followUpCue = hasFollowUpCue(query);
+
+        const currentTokens = tokenizeTopicTerms(query);
+        if (currentTokens.size < 3) return false;
+
+        const recentContextText = history
+            .slice(-3)
+            .map(item => item?.query || '')
+            .join(' ');
+        const recentTokens = tokenizeTopicTerms(recentContextText);
+        if (!recentTokens.size) return false;
+
+        let overlapCount = 0;
+        currentTokens.forEach(token => {
+            if (recentTokens.has(token)) overlapCount += 1;
+        });
+
+        const overlapRatio = overlapCount / currentTokens.size;
+
+        // Strict rule: force reset on very low overlap even when follow-up cue words exist.
+        if (overlapRatio < 0.1) return true;
+
+        // Normal rule for non-follow-up wording.
+        if (!followUpCue && overlapRatio < 0.2) return true;
+
+        return false;
+    };
+
+    const isMoreResultsQuery = (query = '') => {
+        const q = query.toLowerCase();
+        const asksMore = /\b(more|another|additional|next)\b/.test(q);
+        const asksDocs = /\b(publications?|theses?|thesis|titles?|documents?|results?)\b/.test(q);
+        return asksMore && asksDocs;
+    };
+
+    const extractRequestedCount = (query = '') => {
+        const q = query.toLowerCase();
+        const wordToNum = {
+            one: 1,
+            two: 2,
+            three: 3,
+            four: 4,
+            five: 5,
+            six: 6,
+            seven: 7,
+            eight: 8,
+            nine: 9,
+            ten: 10,
+            eleven: 11,
+            twelve: 12,
+            thirteen: 13,
+            fourteen: 14,
+            fifteen: 15,
+        };
+
+        const explicitCount = q.match(/\b(\d+)\b/);
+        if (explicitCount) return Number(explicitCount[1]);
+
+        const explicitWord = q.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen)\b/);
+        if (explicitWord) return wordToNum[explicitWord[1]] || null;
+
+        return null;
+    };
+
     // Load research history from localStorage (for guests)
     const loadResearchHistoryFromLocalStorage = () => {
         try {
@@ -687,22 +781,72 @@ const handleSearch = async (query = searchQuery, forceNew = false) => {
             return;
         }
         
-        // Detect if this is a follow-up that should reuse previous search context
-        const isFollowUp = !forceNew && isFollowUpSearch && lastSearchContext && conversationHistory.length > 0;
+        // Detect topic shifts to avoid leaking previous-topic sources/context into a new topic.
+        const detectedTopicShift = !forceNew
+            && isFollowUpSearch
+            && conversationHistory.length > 0
+            && isTopicShiftQuery(query, conversationHistory);
+        const requestedMoreResults = !forceNew
+            && isFollowUpSearch
+            && conversationHistory.length > 0
+            && isMoreResultsQuery(query);
+        const shouldResetContext = forceNew || detectedTopicShift;
+
+        // Follow-up mode only when context should be preserved.
+        const isFollowUp = !shouldResetContext
+            && !requestedMoreResults
+            && isFollowUpSearch
+            && lastSearchContext
+            && conversationHistory.length > 0;
         
         // 2. SETUP STATE
         setLoading(true);
         setError(null);
         
-        // Clear previous results if starting a new search
-        if (!isFollowUpSearch && !forceNew) {
+        // Clear previous results for a fresh query or automatic topic shift.
+        if ((!isFollowUpSearch && !forceNew) || detectedTopicShift) {
             setSearchResults(null);
             setSelectedSource(null);
         }
+
+        if (detectedTopicShift) {
+            setLastSearchContext(null);
+            setIsFollowUpSearch(false);
+        }
+
+        const excludedFiles = requestedMoreResults
+            ? Array.from(new Set(
+                conversationHistory.flatMap(item => (item?.sources || []).map(source => source?.file).filter(Boolean))
+            ))
+            : [];
+
+        const previousUniqueCount = excludedFiles.length;
+        const requestedAdditionalCount = requestedMoreResults ? extractRequestedCount(query) : null;
+        const targetTotalCount = (requestedMoreResults && requestedAdditionalCount)
+            ? previousUniqueCount + requestedAdditionalCount
+            : null;
+
+        const continuationContext = requestedMoreResults
+            ? {
+                is_more_results_request: true,
+                previous_results_count: previousUniqueCount,
+                requested_additional_count: requestedAdditionalCount,
+                target_total_count: targetTotalCount,
+            }
+            : {};
+
+        const previousSpecificQuery = [...conversationHistory]
+            .map(item => item?.query || '')
+            .reverse()
+            .find(q => q && !isMoreResultsQuery(q));
+
+        const effectiveQuery = requestedMoreResults && previousSpecificQuery
+            ? `${query}. Use the same criteria as this previous request: ${previousSpecificQuery}`
+            : query;
         
         try {
             // Prepare unique query string and session ID
-            const searchQueryText = forceNew ? `${query} [v${Date.now()}]` : query;
+            const searchQueryText = forceNew ? `${effectiveQuery} [v${Date.now()}]` : effectiveQuery;
             const activeSessionId = currentSessionId || generateSessionId();
             if (!currentSessionId) setCurrentSessionId(activeSessionId);
 
@@ -710,12 +854,14 @@ const handleSearch = async (query = searchQuery, forceNew = false) => {
             const requestBody = {
                 question: searchQueryText,
                 filters: {}, 
-                // Send previous context unless forcing new
-                conversation_history: forceNew ? [] : conversationHistory.slice(-3).map(item => ({
+                // Send previous context only when this remains the same topic.
+                conversation_history: shouldResetContext ? [] : conversationHistory.slice(-3).map(item => ({
                     query: item.query,
                     overview: item.overview
                 })),
                 overview_only: false,
+                exclude_files: excludedFiles,
+                continuation_context: continuationContext,
                 session_id: activeSessionId // new line to send session ID with the search request
             };
 
@@ -1479,13 +1625,12 @@ return (
                                     <button
                                         onClick={() => {
                                             setShowUserMenu(false);
-                                            setShowAccountSettings(true);
-                                            setSettingsTab('password');
+                                            navigate('/account-profile');
                                         }}
                                         className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
                                     >
                                         <Settings size={14} />
-                                        <span>Account Settings</span>
+                                        <span>Account Profile</span>
                                     </button>
                                 )}
                                 
@@ -2383,277 +2528,6 @@ return (
                             Research history is saved locally and in cloud storage. {researchHistory.length} {researchHistory.length === 1 ? 'session' : 'sessions'} saved.
                         </p>
                     </div>
-                </div>
-            </div>
-        )}
-
-        {/* Account Settings Modal */}
-        {showAccountSettings && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
-                {/* Header */}
-                <div className="bg-gradient-to-r from-[#1E74BC] to-[#155a8f] text-white p-4">
-                    <div className="flex justify-between items-center">
-                    <h2 className="text-xl font-bold flex items-center gap-2">
-                        <Settings size={24} />
-                        Account Settings
-                    </h2>
-                    <button
-                        onClick={() => {
-                        setShowAccountSettings(false);
-                        setCurrentPassword('');
-                        setNewPassword('');
-                        setConfirmPassword('');
-                        setDeletePassword('');
-                        }}
-                        className="text-white hover:text-gray-200 text-2xl"
-                    >
-                        ×
-                    </button>
-                    </div>
-                </div>
-
-                {/* Tabs */}
-                <div className="flex border-b">
-                    <button
-                    onClick={() => setSettingsTab('profile')}
-                    className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 ${
-                        settingsTab === 'profile'
-                        ? 'text-[#1E74BC] border-b-2 border-[#1E74BC] bg-blue-50'
-                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                    }`}
-                    >
-                    <User size={16} />
-                    Edit Profile
-                    </button>
-                    <button
-                    onClick={() => setSettingsTab('password')}
-                    className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 ${
-                        settingsTab === 'password'
-                        ? 'text-[#1E74BC] border-b-2 border-[#1E74BC] bg-blue-50'
-                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                    }`}
-                    >
-                    <Key size={16} />
-                    Change Password
-                    </button>
-                </div>
-
-                {/* Content */}
-                <div className="p-6">
-                    {settingsTab === 'profile' && (
-                    <form onSubmit={async (e) => {
-                        e.preventDefault();
-                        setSettingsLoading(true);
-                        try {
-                        const token = localStorage.getItem('litpath_session') ? JSON.parse(localStorage.getItem('litpath_session')).session_token : null;
-                        const res = await fetch(`${API_BASE_URL}/auth/update-profile/`, {
-                            method: 'POST',
-                            headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                            },
-                            body: JSON.stringify({
-                            full_name: editFullName,
-                            username: editUsername
-                            })
-                        });
-                        let data;
-                        if (res.ok) {
-                            data = await res.json();
-                            setSettingsLoading(false);
-                            if (data.success) {
-                            if (data.user) {
-                                localStorage.setItem('litpath_auth_user', JSON.stringify(data.user));
-                                setUser(data.user);
-                            }
-                            showToast('Profile updated!', 'success');
-                            setShowAccountSettings(false);
-                            } else {
-                            showToast(data.message || 'Failed to update profile', 'error');
-                            }
-                        } else {
-                            // Try to parse error message from backend
-                            try {
-                            data = await res.json();
-                            showToast(data.message || data.error || 'Failed to update profile', 'error');
-                            } catch (parseErr) {
-                            const errorText = await res.text();
-                            showToast(errorText || 'Failed to update profile', 'error');
-                            }
-                            setSettingsLoading(false);
-                        }
-                        } catch (err) {
-                        setSettingsLoading(false);
-                        showToast('Connection error', 'error');
-                        }
-                    }}>
-                        <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                            <input
-                            type="text"
-                            value={editFullName}
-                            onChange={e => setEditFullName(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
-                            required
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
-                            <input
-                            type="text"
-                            value={editUsername}
-                            onChange={e => setEditUsername(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent"
-                            required
-                            />
-                        </div>
-                        <button
-                            type="submit"
-                            disabled={settingsLoading}
-                            className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                        >
-                            {settingsLoading ? (
-                            <>
-                                <RefreshCw size={16} className="animate-spin" />
-                                Saving...
-                            </>
-                            ) : (
-                            <>
-                                <User size={16} />
-                                Save Changes
-                            </>
-                            )}
-                        </button>
-                        </div>
-                    </form>
-                    )}
-
-                    {settingsTab === 'password' && (
-                    <form onSubmit={async (e) => {
-                        e.preventDefault();
-                        if (newPassword !== confirmPassword) {
-                        showToast('New passwords do not match', 'error');
-                        return;
-                        }
-                        if (newPassword.length < 8) {  // Updated to 8
-                        showToast('Password must be at least 8 characters', 'error');
-                        return;
-                        }
-                        setSettingsLoading(true);
-                        const result = await changePassword(currentPassword, newPassword);
-                        setSettingsLoading(false);
-                        if (result.success) {
-                            showToast('Password changed successfully! Please log in again.', 'success');
-                            setShowAccountSettings(false);
-                            setCurrentPassword('');
-                            setNewPassword('');
-                            setConfirmPassword('');
-                            await logout();
-                            navigate('/');
-                        } else {
-                            showToast(result.error || 'Failed to change password', 'error');
-                        }
-                    }}>
-                        <div className="space-y-4">
-                        {/* Current Password */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Current Password
-                            </label>
-                            <div className="relative">
-                            <input
-                                type={showCurrentPassword ? 'text' : 'password'}
-                                value={currentPassword}
-                                onChange={(e) => setCurrentPassword(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent pr-10"
-                                required
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                            >
-                                {showCurrentPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                            </button>
-                            </div>
-                        </div>
-
-                        {/* New Password */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                            New Password
-                            </label>
-                            <div className="relative">
-                            <input
-                                type={showNewPassword ? 'text' : 'password'}
-                                value={newPassword}
-                                onChange={(e) => setNewPassword(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent pr-10"
-                                required
-                                minLength={8}  // Updated to 8
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowNewPassword(!showNewPassword)}
-                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                            >
-                                {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                            </button>
-                            </div>
-                        </div>
-
-                        {/* Confirm New Password (with eye icon) */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Confirm New Password
-                            </label>
-                            <div className="relative">
-                            <input
-                                type={showConfirmPassword ? 'text' : 'password'}
-                                value={confirmPassword}
-                                onChange={(e) => setConfirmPassword(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent pr-10"
-                                required
-                                minLength={8}  // Updated to 8
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                            >
-                                {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                            </button>
-                            </div>
-                        </div>
-
-                        {/* Password hint */}
-                        <p className="text-xs text-gray-500 mt-1">
-                            Password must be at least 8 characters long
-                        </p>
-
-                        <button
-                            type="submit"
-                            disabled={settingsLoading}
-                            className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                        >
-                            {settingsLoading ? (
-                            <>
-                                <RefreshCw size={16} className="animate-spin" />
-                                Changing...
-                            </>
-                            ) : (
-                            <>
-                                <Key size={16} />
-                                Change Password
-                            </>
-                            )}
-                        </button>
-                        </div>
-                    </form>
-                    )}
-                </div>
                 </div>
             </div>
         )}

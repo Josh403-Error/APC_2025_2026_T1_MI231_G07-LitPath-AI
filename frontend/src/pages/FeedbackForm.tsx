@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Star } from 'lucide-react';
@@ -20,17 +20,31 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
         user_id: userId || '',
         session_id: sessionId,
         consent_given: false,
-        client_type: '',
+        client_type: user?.client_type || '',
         date: new Date().toISOString().split('T')[0],
-        sex: '',
-        age: '',
-        region: '',
-        category: '',
+        sex: user?.sex || '',
+        age: user?.age || '',
+        region: user?.region || '',
+        category: user?.category || '',
         litpath_rating: null,
         research_interests: '',
         missing_content: '',
         message_comment: ''
     });
+
+    useEffect(() => {
+        if (!user) return;
+
+        setFormData(prev => ({
+            ...prev,
+            user_id: userId || prev.user_id,
+            client_type: prev.client_type || user.client_type || '',
+            sex: prev.sex || user.sex || '',
+            age: prev.age || user.age || '',
+            region: prev.region || user.region || '',
+            category: prev.category || user.category || ''
+        }));
+    }, [user, userId]);
 
     const [errors, setErrors] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);

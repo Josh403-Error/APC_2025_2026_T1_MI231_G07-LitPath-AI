@@ -220,6 +220,7 @@ class SearchView(APIView):
     
     def post(self, request):
         import uuid
+        import re
         request_id = str(uuid.uuid4())
         print(f"[RAG-DEBUG] SearchView.post called. Request ID: {request_id}")
         try:
@@ -227,6 +228,14 @@ class SearchView(APIView):
             filters = request.data.get("filters", {})
             conversation_history = request.data.get("conversation_history", [])
             overview_only = request.data.get("overview_only", False)
+            exclude_files = request.data.get("exclude_files", [])
+            continuation_context = request.data.get("continuation_context", {})
+
+            if exclude_files and not isinstance(exclude_files, list):
+                return Response(
+                    {"error": "'exclude_files' must be a list"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
             if not question:
                 return Response(
@@ -287,10 +296,21 @@ class SearchView(APIView):
                     {"error": "'subjects' must be a list"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
-            # Resolve pronouns in query using conversation history
+
+            # Detect explicit "more results" intent and avoid pronoun/entity expansion,
+            # which can inject unrelated terms (e.g., from prior answers) and skew retrieval.
+            is_more_results_query = bool(re.search(
+                r"\b(more|additional|another|next)\b.*\b(results?|documents?|theses?|thesis|titles?|papers?|publications?)\b",
+                question,
+                re.IGNORECASE,
+            ))
+
+            # Resolve pronouns in query using conversation history when appropriate.
             from .conversation_utils import conversation_manager
-            enhanced_question = conversation_manager.resolve_pronouns(question, conversation_history)
+            if is_more_results_query:
+                enhanced_question = question
+            else:
+                enhanced_question = conversation_manager.resolve_pronouns(question, conversation_history)
             
             # Search for relevant chunks with filters
             search_start = time.time()
@@ -300,6 +320,8 @@ class SearchView(APIView):
                 year=year,
                 year_start=year_start,
                 year_end=year_end,
+                exclude_files=exclude_files,
+                conversation_history=conversation_history,
                 request_id=request_id
             )
             search_time = time.time() - search_start
@@ -380,7 +402,13 @@ class SearchView(APIView):
             
             # Generate overview (overview_only=True)
             generate_start = time.time()
-            overview = rag.generate_overview(top_chunks, question, distance_threshold, conversation_history)
+            overview = rag.generate_overview(
+                top_chunks,
+                question,
+                distance_threshold,
+                conversation_history,
+                continuation_context=continuation_context,
+            )
             generate_time = time.time() - generate_start
             print(f"[RAG] AI generation took {generate_time:.2f}s")
             
@@ -457,6 +485,7 @@ class StreamingSearchView(APIView):
     def post(self, request):
         import uuid
         import json as json_mod
+        import re
         request_id = str(uuid.uuid4())
         print(f"[RAG-DEBUG] StreamingSearchView.post called. Request ID: {request_id}")
         
@@ -464,6 +493,8 @@ class StreamingSearchView(APIView):
             question = request.data.get("question", "").strip()
             conversation_history = request.data.get("conversation_history", [])
             search_context = request.data.get("_search_context")
+            exclude_files = request.data.get("exclude_files", [])
+            continuation_context = request.data.get("continuation_context", {})
             
             if not question:
                 return Response(
@@ -506,8 +537,17 @@ class StreamingSearchView(APIView):
                         year_start = parsed.get("year_start")
                         year_end = parsed.get("year_end")
                 
+                is_more_results_query = bool(re.search(
+                    r"\b(more|additional|another|next)\b.*\b(results?|documents?|theses?|thesis|titles?|papers?|publications?)\b",
+                    question,
+                    re.IGNORECASE,
+                ))
+
                 from .conversation_utils import conversation_manager
-                enhanced_question = conversation_manager.resolve_pronouns(question, conversation_history)
+                if is_more_results_query:
+                    enhanced_question = question
+                else:
+                    enhanced_question = conversation_manager.resolve_pronouns(question, conversation_history)
                 
                 top_chunks, documents, distance_threshold = rag.search(
                     enhanced_question,
@@ -515,6 +555,8 @@ class StreamingSearchView(APIView):
                     year=year,
                     year_start=year_start,
                     year_end=year_end,
+                    exclude_files=exclude_files,
+                    conversation_history=conversation_history,
                     request_id=request_id
                 )
             
@@ -522,7 +564,11 @@ class StreamingSearchView(APIView):
                 """Generator that yields SSE events from Gemini streaming."""
                 try:
                     for event_type, data in rag.generate_overview_stream(
-                        top_chunks, question, distance_threshold, conversation_history
+                        top_chunks,
+                        question,
+                        distance_threshold,
+                        conversation_history,
+                        continuation_context=continuation_context,
                     ):
                         payload = json_mod.dumps({"type": event_type, "content": data})
                         yield f"data: {payload}\n\n"
@@ -1245,18 +1291,19 @@ def request_password_reset(request):
     if not email:
         return Response({"success": False, "message": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
     user = UserAccount.objects.filter(email=email).first()
-    print(f"[DEBUG] User lookup for email '{email}': {user}")
     if user:
         reset_token = secrets.token_urlsafe(32)
         expiry = timezone.now() + timezone.timedelta(hours=1)
-        print(f"[DEBUG] About to create PasswordResetToken for user: {user.email}, token: {reset_token}, expiry: {expiry}")
         try:
-            prt = PasswordResetToken.objects.create(user=user, token=reset_token, expiry=expiry, used=False)
-            print(f"[DEBUG] Created PasswordResetToken: token={prt.token}, user={prt.user.email}, expiry={prt.expiry}, used={prt.used}")
+            PasswordResetToken.objects.create(
+                user=user,
+                token=PasswordResetToken.hash_token(reset_token),
+                expiry=expiry,
+                used=False,
+            )
         except Exception as e:
             print(f"[DEBUG] Error creating PasswordResetToken: {e}")
         reset_link = f"http://localhost:5173/reset-password/{reset_token}"
-        print(f"[DEBUG] Password reset link for {email}: {reset_link}")
         # Send email with reset link
         try:
             send_mail(
@@ -1265,7 +1312,6 @@ def request_password_reset(request):
                 settings.DEFAULT_FROM_EMAIL,
                 [email],
             )
-            print(f"[DEBUG] Password reset email sent to {email}")
         except Exception as e:
             print(f"[DEBUG] Error sending password reset email: {e}")
     # Always return success for security
@@ -1277,35 +1323,23 @@ def reset_password(request):
     POST: Reset password using token
     Body: {"token": "...", "new_password": "..."}
     """
-    print("[DEBUG] Entered reset_password view")
     from .models_password_reset import PasswordResetToken
     token = request.data.get('token')
     new_password = request.data.get('new_password')
-    print(f"[DEBUG] Received token: {token}")
-    # Print all tokens in the database for debugging
-    all_tokens = PasswordResetToken.objects.all()
-    print(f"[DEBUG] All tokens in DB:")
-    for t in all_tokens:
-        print(f"  token={t.token}, used={t.used}, expiry={t.expiry}, user={t.user.email}")
     if not token or not new_password:
-        print("[DEBUG] Missing token or new_password")
         return Response({"error": "Token and new password are required."}, status=status.HTTP_400_BAD_REQUEST)
-    try:
-        prt = PasswordResetToken.objects.get(token=token, used=False)
-        print(f"[DEBUG] Found token in DB: {prt.token}, expiry: {prt.expiry}, used: {prt.used}")
-        if prt.expiry < timezone.now():
-            print(f"[DEBUG] Token expired: {prt.expiry} < {timezone.now()}")
-            return Response({"error": "Token expired."}, status=status.HTTP_400_BAD_REQUEST)
-        user = prt.user
-        user.set_password(new_password)
-        user.save()
-        prt.used = True
-        prt.save()
-        print(f"[DEBUG] Password reset successful for user: {user.email}")
-        return Response({"success": True, "message": "Password reset successful."}, status=status.HTTP_200_OK)
-    except PasswordResetToken.DoesNotExist:
-        print(f"[DEBUG] Token not found or already used: {token}")
+    prt = PasswordResetToken.find_unused_by_raw_token(token)
+    if not prt:
         return Response({"error": "Invalid or used token."}, status=status.HTTP_400_BAD_REQUEST)
+    if prt.expiry < timezone.now():
+        return Response({"error": "Token expired."}, status=status.HTTP_400_BAD_REQUEST)
+
+    user = prt.user
+    user.set_password(new_password)
+    user.save()
+    prt.used = True
+    prt.save(update_fields=['used'])
+    return Response({"success": True, "message": "Password reset successful."}, status=status.HTTP_200_OK)
 
 
 # ============= RAG Evaluation API =============
