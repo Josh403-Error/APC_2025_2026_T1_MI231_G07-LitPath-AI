@@ -201,40 +201,6 @@ python manage.py createsuperuser
 python manage.py check
 ```
 
-### Run tests
-```bash
-python manage.py test
-```
-
-### Run hardening tests safely (PostgreSQL)
-
-Use this helper to terminate stale sessions before running tests.
-
-Set a dedicated test DB name in `.env` (recommended):
-
-```env
-TEST_DB_NAME=litpath_test_db
-```
-
-Default run (stable, keeps test DB):
-
-```bash
-python scripts/run_tests_safe.py
-```
-
-Useful options:
-
-```bash
-# Run a different test label
-python scripts/run_tests_safe.py --label rag_api.tests
-
-# Disable keepdb behavior
-python scripts/run_tests_safe.py --no-keepdb
-
-# Pass extra Django test args
-python scripts/run_tests_safe.py --label rag_api.tests.AuthRegisterHardeningTests -- --failfast
-```
-
 ## Production Deployment
 
 For production, you'll need:
