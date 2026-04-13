@@ -11,7 +11,7 @@ import secrets
 from django.db.models import Count, Avg, Q, Sum
 from django.db.models import Max
 from django.db.models.functions import TruncMonth, TruncDate
-from django.db import connection
+from django.db import connection, models
 import dateutil.parser
 import time
 from django.utils import timezone
@@ -1450,6 +1450,23 @@ def dashboard_failed_queries_count(request):
     ).count()
 
     return Response({'total': total_failed})
+
+# Failed Queries Details
+@api_view(['GET'])
+def dashboard_failed_queries_details(request):
+    """
+    GET /api/dashboard/failed-queries-details/
+    Returns top failed queries (zero results) with their counts in the date range.
+    """
+    from_date, to_date = parse_date_range(request.GET.get('from'), request.GET.get('to'))
+    limit = int(request.GET.get('limit', 10))
+
+    failed_queries = ResearchHistory.objects.filter(
+        created_at__range=[from_date, to_date],
+        sources_count=0
+    ).values('query').annotate(count=models.Count('query')).order_by('-count')[:limit]
+
+    return Response({'failed_queries': list(failed_queries)})
 
 # ============= Endpoint 2 – Trending Topics =============
 @api_view(['GET'])

@@ -1,4 +1,5 @@
 // @ts-nocheck
+/* eslint-disable jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events, react/no-unescaped-entities, jsx-a11y/no-autofocus, jsx-a11y/anchor-is-valid, jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/img-redundant-alt */
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -61,7 +62,8 @@ const AdminDashboard = () => {
         ageDistribution: [],
         citationTrends: [],
         citationStats: { total_copies: 0, top_cited: [] },
-        trends: [] // for activity trends (monthly/weekly/daily)
+        trends: [], // for activity trends (monthly/weekly/daily)
+        failedQueries: [] // for failed queries with details
     });
     const [loading, setLoading] = useState(false);
 
@@ -83,6 +85,10 @@ const AdminDashboard = () => {
     // ---------- Feedback Manager Rating Filter ----------
     const [showRatingDropdown, setShowRatingDropdown] = useState(false);
     const ratingDropdownRef = useRef(null);
+
+    // ---------- Feedback Manager Pagination ----------
+    const [currentFeedbackPage, setCurrentFeedbackPage] = useState(1);
+    const feedbackItemsPerPage = 10;
 
     // ---------- Material Ratings ----------
     const [materialRatings, setMaterialRatings] = useState([]);
@@ -281,7 +287,7 @@ const AdminDashboard = () => {
         const { from, to } = getDateRange();
         if (overviewDateFilterType === 'Custom range' && (!from || !to)) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/dashboard/top-theses/?from=${from}&to=${to}&limit=5`);
+            const res = await fetch(`${API_BASE_URL}/dashboard/top-theses/?from=${from}&to=${to}&limit=8`);
             if (res.ok) {
                 const data = await res.json();
                 setDashboardData(prev => ({ ...prev, topTheses: data.materials || [] }));
@@ -321,6 +327,18 @@ const AdminDashboard = () => {
             if (res.ok) {
                 const data = await res.json();
                 setDashboardData(prev => ({ ...prev, failedQueriesCount: data.total }));
+            }
+        } catch (error) { console.error(error); }
+    };
+
+    const fetchFailedQueriesDetails = async () => {
+        const { from, to } = getDateRange();
+        if (overviewDateFilterType === 'Custom range' && (!from || !to)) return;
+        try {
+            const res = await fetch(`${API_BASE_URL}/dashboard/failed-queries-details/?from=${from}&to=${to}&limit=10`);
+            if (res.ok) {
+                const data = await res.json();
+                setDashboardData(prev => ({ ...prev, failedQueries: data.failed_queries || [] }));
             }
         } catch (error) { console.error(error); }
     };
@@ -502,6 +520,7 @@ const AdminDashboard = () => {
         Promise.all([
             fetchDashboardKPI(),
             fetchFailedQueriesCount(),
+            fetchFailedQueriesDetails(),
             fetchTrendingTopics(),
             fetchTopTheses(),
             fetchUsageByCategory(),
@@ -597,6 +616,10 @@ const AdminDashboard = () => {
         }
     }, [user]);
 
+    // Reset pagination when filters change
+    useEffect(() => {
+        setCurrentFeedbackPage(1);
+    }, [feedbackFilter, feedbackDateFilterType, feedbackSelectedYear, feedbackSelectedMonth, feedbackSelectedMonthYear, feedbackCustomFrom, feedbackCustomTo]);
 
     // ---------- Feedback & Ratings ----------
     const fetchFeedback = async () => {
@@ -1539,6 +1562,8 @@ const AdminDashboard = () => {
                                     <h2 className="text-xl font-bold">Review Feedback</h2>
                                 </div>
                                 <button
+                                    type="button"
+                                    title="Close feedback modal"
                                     onClick={() => setShowFeedbackModal(false)}
                                     className="text-white hover:text-gray-200 transition-colors p-1"
                                 >
@@ -1652,6 +1677,7 @@ const AdminDashboard = () => {
                                             </label>
                                             {isEditingFeedback ? (
                                                 <select
+                                                    aria-label="Select feedback status"
                                                     className="w-full border-gray-300 border rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white shadow-sm"
                                                     value={feedbackEditForm.status}
                                                     onChange={(e) => setFeedbackEditForm({ ...feedbackEditForm, status: e.target.value })}
@@ -1678,6 +1704,7 @@ const AdminDashboard = () => {
                                             </label>
                                             {isEditingFeedback ? (
                                                 <select
+                                                    aria-label="Select admin category"
                                                     className="w-full border-gray-300 border rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white shadow-sm"
                                                     value={feedbackEditForm.admin_category}
                                                     onChange={(e) => setFeedbackEditForm({ ...feedbackEditForm, admin_category: e.target.value })}
@@ -1914,7 +1941,7 @@ const AdminDashboard = () => {
                 {/* Sidebar */}
                 <aside className={`bg-white border-r border-gray-200 transition-all duration-300 flex flex-col z-20 ${isSidebarOpen ? 'w-64' : 'w-16'}`}>
                     <div className={`h-16 flex items-center border-b border-gray-100 ${isSidebarOpen ? 'justify-start px-4' : 'justify-center p-0'}`}>
-                        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 rounded hover:bg-gray-100 transition-colors text-gray-600">
+                        <button type="button" title="Toggle sidebar" onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 rounded hover:bg-gray-100 transition-colors text-gray-600">
                             <Menu size={24} />
                         </button>
                     </div>
@@ -2042,6 +2069,7 @@ const AdminDashboard = () => {
                                                                 Select year
                                                             </label>
                                                             <select
+                                                                aria-label="Select year for overview"
                                                                 value={overviewSelectedYear}
                                                                 onChange={(e) => setOverviewSelectedYear(parseInt(e.target.value))}
                                                                 className="w-full text-xs border border-gray-300 rounded-md p-1.5 focus:ring-blue-500 focus:border-blue-500"
@@ -2071,6 +2099,7 @@ const AdminDashboard = () => {
                                                                         Month
                                                                     </label>
                                                                     <select
+                                                                        aria-label="Select month for overview filter"
                                                                         value={overviewSelectedMonth}
                                                                         onChange={(e) => setOverviewSelectedMonth(parseInt(e.target.value))}
                                                                         className="w-full text-xs border border-gray-300 rounded-md p-1.5 focus:ring-blue-500 focus:border-blue-500"
@@ -2087,6 +2116,7 @@ const AdminDashboard = () => {
                                                                         Year
                                                                     </label>
                                                                     <select
+                                                                        aria-label="Select year for overview month filter"
                                                                         value={overviewSelectedMonthYear}
                                                                         onChange={(e) => setOverviewSelectedMonthYear(parseInt(e.target.value))}
                                                                         className="w-full text-xs border border-gray-300 rounded-md p-1.5 focus:ring-blue-500 focus:border-blue-500"
@@ -2287,64 +2317,97 @@ const AdminDashboard = () => {
                                 <div className="grid grid-cols-12 gap-2">
 
                                     {/* COL 1: TRENDING TOPICS (25%) */}
-                                    <div className="col-span-12 lg:col-span-3 bg-white rounded-lg shadow-sm border border-gray-100 p-4 flex flex-col">
-                                        <div className="flex items-center gap-1 mb-4">
-                                            <h3 className="font-bold text-gray-700 text-xs uppercase tracking-wide flex items-center gap-2">
-                                                <TrendingUp size={16} className="text-blue-600" /> TRENDING TOPICS
-                                            </h3>
-                                            {/* Info icon for view count explanation */}
-                                            <div className="relative group">
-                                                <Info size={14} className="text-gray-400 cursor-help hover:text-gray-600" />
-                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center z-20 pointer-events-none w-48">
-                                                    <div className="bg-gray-800 text-white text-[10px] px-3 py-2 rounded shadow-lg text-center">
-                                                        Number of views in the selected period. Growth percentage compared to previous period; may exceed 100% for new topics.
+                                    <div className="col-span-12 lg:col-span-3 flex flex-col gap-2">
+                                        {/* Trending Topics Card */}
+                                        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 flex-1">
+                                            <div className="flex items-center gap-1 mb-4">
+                                                <h3 className="font-bold text-gray-700 text-xs uppercase tracking-wide flex items-center gap-2">
+                                                    <TrendingUp size={16} className="text-blue-600" /> TRENDING TOPICS
+                                                </h3>
+                                                {/* Info icon for view count explanation */}
+                                                <div className="relative group">
+                                                    <Info size={14} className="text-gray-400 cursor-help hover:text-gray-600" />
+                                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center z-20 pointer-events-none w-48">
+                                                        <div className="bg-gray-800 text-white text-[10px] px-3 py-2 rounded shadow-lg text-center">
+                                                            Number of views in the selected period. Growth percentage compared to previous period; may exceed 100% for new topics.
+                                                        </div>
+                                                        <div className="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[4px] border-t-gray-800"></div>
                                                     </div>
-                                                    <div className="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[4px] border-t-gray-800"></div>
                                                 </div>
                                             </div>
-                                        </div>
-                                        <div className="space-y-4 flex-1">
-                                            {dashboardData.trendingTopics.length > 0 ? (
-                                                dashboardData.trendingTopics.map((item, i) => {
-                                                    // Updated colors: positive growth now emerald (vibrant green)
-                                                    const barColor = item.growth > 0 ? 'bg-emerald-500' : item.growth < 0 ? 'bg-red-400' : 'bg-gray-400';
-                                                    const arrow = item.growth > 0 ? '↑' : item.growth < 0 ? '↓' : '–';
-                                                    const textColor = item.growth > 0 ? 'text-emerald-700' : item.growth < 0 ? 'text-red-700' : 'text-gray-500';
-                                                    const maxViews = Math.max(...dashboardData.trendingTopics.map(t => t.current_views), 1);
-                                                    const barWidth = (item.current_views / maxViews) * 100;
-                                                    return (
-                                                        <div key={i} className="flex flex-col gap-1">
-                                                            <div className="flex justify-between items-center text-xs">
-                                                                <span className="font-medium text-gray-700 truncate max-w-[60%]" title={item.subject}>
-                                                                    {i+1}. {item.subject}
-                                                                </span>
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="font-semibold text-gray-900">{item.current_views}</span>
-                                                                    <span className={`text-[10px] font-bold ${textColor} flex items-center`}>
-                                                                        {arrow} {Math.abs(item.growth)}%
+                                            <div className="space-y-4 flex-1">
+                                                {dashboardData.trendingTopics.length > 0 ? (
+                                                    dashboardData.trendingTopics.map((item, i) => {
+                                                        // Updated colors: positive growth now emerald (vibrant green)
+                                                        const barColor = item.growth > 0 ? 'bg-emerald-500' : item.growth < 0 ? 'bg-red-400' : 'bg-gray-400';
+                                                        const arrow = item.growth > 0 ? '↑' : item.growth < 0 ? '↓' : '–';
+                                                        const textColor = item.growth > 0 ? 'text-emerald-700' : item.growth < 0 ? 'text-red-700' : 'text-gray-500';
+                                                        const maxViews = Math.max(...dashboardData.trendingTopics.map(t => t.current_views), 1);
+                                                        const barWidth = (item.current_views / maxViews) * 100;
+                                                        return (
+                                                            <div key={i} className="flex flex-col gap-1">
+                                                                <div className="flex justify-between items-center text-xs">
+                                                                    <span className="font-medium text-gray-700 truncate max-w-[60%]" title={item.subject}>
+                                                                        {i+1}. {item.subject}
                                                                     </span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="font-semibold text-gray-900">{item.current_views}</span>
+                                                                        <span className={`text-[10px] font-bold ${textColor} flex items-center`}>
+                                                                            {arrow} {Math.abs(item.growth)}%
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                                                                    <div 
+                                                                        className={`h-full rounded-full ${barColor} transition-all duration-300`}
+                                                                        style={{ width: `${barWidth}%` }}
+                                                                    />
                                                                 </div>
                                                             </div>
-                                                            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                                                                <div 
-                                                                    className={`h-full rounded-full ${barColor} transition-all duration-300`}
-                                                                    style={{ width: `${barWidth}%` }}
-                                                                />
-                                                            </div>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    <p className="text-xs text-gray-400 italic">Not enough data yet</p>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Top Failed Queries */}
+                                        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 flex-1">
+                                            <div className="flex items-center gap-1 mb-3">
+                                                <h3 className="font-bold text-gray-700 text-xs uppercase tracking-wide flex items-center gap-2">
+                                                    <AlertCircle size={16} className="text-red-600" /> Top Failed Queries
+                                                </h3>
+                                                <div className="relative group">
+                                                    <Info size={14} className="text-gray-400 cursor-help hover:text-gray-600" />
+                                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center z-20 pointer-events-none w-48">
+                                                        <div className="bg-gray-800 text-white text-[10px] px-3 py-2 rounded shadow-lg text-center">
+                                                            Specific keywords/queries that returned zero results.
                                                         </div>
-                                                    );
-                                                })
+                                                        <div className="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[4px] border-t-gray-800"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {dashboardData.failedQueries && dashboardData.failedQueries.length > 0 ? (
+                                                <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                                                    {dashboardData.failedQueries.map((item, i) => (
+                                                        <div key={i} className="flex items-center justify-between gap-2 text-xs bg-red-50 border border-red-100 rounded px-3 py-2">
+                                                            <span className="text-gray-700 truncate flex-1 font-medium">{item.query}</span>
+                                                            <span className="text-red-600 font-bold flex-shrink-0 bg-red-100 px-2 py-0.5 rounded">{item.count}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             ) : (
-                                                <p className="text-xs text-gray-400 italic">Not enough data yet</p>
+                                                <p className="text-xs text-gray-400 italic text-center py-4">No failed queries recorded</p>
                                             )}
                                         </div>
                                     </div>
 
-                                    {/* COL 2: TOP 5 THESES - LEADERBOARD STYLE (50%) */}
-                                    <div className="col-span-12 lg:col-span-6 bg-white rounded-lg shadow-sm border border-gray-100 p-4 flex flex-col">
+                                    {/* COL 2: MOST VIEWED THESES - LEADERBOARD STYLE (50%) */}
+                                    <div className="col-span-12 lg:col-span-6 bg-white rounded-lg shadow-sm border border-gray-100 p-4 flex flex-col overflow-hidden">
                                         <div className="flex items-center gap-1 mb-4">
                                             <h3 className="font-bold text-gray-700 text-xs uppercase tracking-wide flex items-center gap-2">
-                                                <BookOpen size={16} className="text-purple-600" /> Top 5 Most Viewed Theses
+                                                <BookOpen size={16} className="text-purple-600" /> Most Viewed Theses
                                             </h3>
                                             <div className="relative group">
                                                 <Info size={14} className="text-gray-400 cursor-help hover:text-gray-600" />
@@ -2356,8 +2419,8 @@ const AdminDashboard = () => {
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="flex-1 flex flex-col gap-3">
-                                            {dashboardData.topTheses.slice(0, 5).map((item, i) => (
+                                        <div className="flex-1 flex flex-col gap-2 overflow-hidden">
+                                            {dashboardData.topTheses.slice(0, 8).map((item, i) => (
                                                 <div
                                                     key={i}
                                                     className={`relative flex items-center gap-4 p-3 rounded-lg border transition-all ${
@@ -2489,7 +2552,7 @@ const AdminDashboard = () => {
                                                 }).join(', ');
 
                                                 return (
-                                                    <div className="flex flex-col md:flex-row items-center gap-4">
+                                                    <div className="flex flex-col items-center gap-4 w-full">
                                                         {/* Donut chart */}
                                                         <div className="relative w-32 h-32 flex-shrink-0">
                                                             <div
@@ -2505,7 +2568,7 @@ const AdminDashboard = () => {
                                                             </div>
                                                         </div>
                                                         {/* Legend */}
-                                                        <div className="flex-1 space-y-1 max-h-40 overflow-y-auto pr-1">
+                                                        <div className="w-full space-y-1 max-h-40 overflow-y-auto pr-1">
                                                             {agesWithData.map((item, i) => {
                                                                 const color = colorPalette[i % colorPalette.length];
                                                                 return (
@@ -2525,6 +2588,8 @@ const AdminDashboard = () => {
                                                 );
                                             })()}
                                         </div>
+
+
                                     </div>
                                 </div>
 
@@ -2940,6 +3005,7 @@ const AdminDashboard = () => {
                                                             Select year
                                                         </label>
                                                         <select
+                                                            aria-label="Select year for feedback filter"
                                                             value={feedbackSelectedYear}
                                                             onChange={(e) => setFeedbackSelectedYear(parseInt(e.target.value))}
                                                             className="w-full text-xs border border-gray-300 rounded-md p-1.5 focus:ring-blue-500 focus:border-blue-500"
@@ -2966,6 +3032,7 @@ const AdminDashboard = () => {
                                                                     Month
                                                                 </label>
                                                                 <select
+                                                                    aria-label="Select month for feedback filter"
                                                                     value={feedbackSelectedMonth}
                                                                     onChange={(e) => setFeedbackSelectedMonth(parseInt(e.target.value))}
                                                                     className="w-full text-xs border border-gray-300 rounded-md p-1.5 focus:ring-blue-500 focus:border-blue-500"
@@ -2982,6 +3049,7 @@ const AdminDashboard = () => {
                                                                     Year
                                                                 </label>
                                                                 <select
+                                                                    aria-label="Select year for feedback month filter"
                                                                     value={feedbackSelectedMonthYear}
                                                                     onChange={(e) => setFeedbackSelectedMonthYear(parseInt(e.target.value))}
                                                                     className="w-full text-xs border border-gray-300 rounded-md p-1.5 focus:ring-blue-500 focus:border-blue-500"
@@ -3139,7 +3207,13 @@ const AdminDashboard = () => {
                                                     );
                                                 }
                                                 
-                                                return filtered.map((fb) => (
+                                                // Calculate pagination
+                                                const totalPages = Math.ceil(filtered.length / feedbackItemsPerPage);
+                                                const startIndex = (currentFeedbackPage - 1) * feedbackItemsPerPage;
+                                                const endIndex = startIndex + feedbackItemsPerPage;
+                                                const paginatedFeedback = filtered.slice(startIndex, endIndex);
+                                                
+                                                return paginatedFeedback.map((fb) => (
                                                     <tr key={fb.id} className="hover:bg-gray-50 transition-colors cursor-pointer group" onClick={() => handleFeedbackClick(fb)} title="View details">
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">
                                                             {new Date(fb.created_at).toLocaleDateString()}
@@ -3180,6 +3254,64 @@ const AdminDashboard = () => {
                                     </tbody>
                                 </table>
                             </div>
+                            
+                            {/* Pagination Controls */}
+                            {feedbacks.length > 0 && (() => {
+                                const filtered = feedbacks
+                                    .filter(fb => feedbackFilter === 'All' || fb.litpath_rating?.toString() === feedbackFilter)
+                                    .filter(fb => isFeedbackInDateRange(fb.created_at));
+                                const totalPages = Math.ceil(filtered.length / feedbackItemsPerPage);
+                                
+                                return (
+                                    <div className="flex items-center justify-center mt-4 px-6 py-3 bg-gray-50 rounded-lg border border-gray-200">
+                                        <div className="flex gap-2 items-center">
+                                            <button
+                                                onClick={() => setCurrentFeedbackPage(prev => Math.max(1, prev - 1))}
+                                                disabled={currentFeedbackPage === 1}
+                                                className={`flex items-center gap-1 px-3 py-1.5 rounded border text-xs font-medium transition-colors ${
+                                                    currentFeedbackPage === 1
+                                                        ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300'
+                                                }`}
+                                            >
+                                                <ChevronLeft size={16} /> Previous
+                                            </button>
+                                            
+                                            <div className="text-sm text-gray-600 px-3 py-1.5 font-semibold">
+                                                {Math.min((currentFeedbackPage - 1) * feedbackItemsPerPage + 1, filtered.length)}-{Math.min(currentFeedbackPage * feedbackItemsPerPage, filtered.length)} of {filtered.length}
+                                            </div>
+                                            
+                                            <div className="flex items-center gap-1">
+                                                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                                                    <button
+                                                        key={page}
+                                                        onClick={() => setCurrentFeedbackPage(page)}
+                                                        className={`px-2.5 py-1.5 rounded text-xs font-medium transition-colors ${
+                                                            currentFeedbackPage === page
+                                                                ? 'bg-blue-600 text-white border border-blue-600'
+                                                                : 'bg-white text-gray-700 border border-gray-300 hover:bg-blue-50 hover:border-blue-300'
+                                                        }`}
+                                                    >
+                                                        {page}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            
+                                            <button
+                                                onClick={() => setCurrentFeedbackPage(prev => Math.min(totalPages, prev + 1))}
+                                                disabled={currentFeedbackPage === totalPages}
+                                                className={`flex items-center gap-1 px-3 py-1.5 rounded border text-xs font-medium transition-colors ${
+                                                    currentFeedbackPage === totalPages
+                                                        ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300'
+                                                }`}
+                                            >
+                                                Next <ChevronRight size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     )}
 
@@ -3272,6 +3404,7 @@ const AdminDashboard = () => {
                                                             Select year
                                                         </label>
                                                         <select
+                                                            aria-label="Select year for ratings filter"
                                                             value={ratingsSelectedYear}
                                                             onChange={(e) => setRatingsSelectedYear(parseInt(e.target.value))}
                                                             className="w-full text-xs border border-gray-300 rounded-md p-1.5 focus:ring-blue-500 focus:border-blue-500"
@@ -3298,6 +3431,7 @@ const AdminDashboard = () => {
                                                                     Month
                                                                 </label>
                                                                 <select
+                                                                    aria-label="Select month for ratings filter"
                                                                     value={ratingsSelectedMonth}
                                                                     onChange={(e) => setRatingsSelectedMonth(parseInt(e.target.value))}
                                                                     className="w-full text-xs border border-gray-300 rounded-md p-1.5 focus:ring-blue-500 focus:border-blue-500"
@@ -3314,6 +3448,7 @@ const AdminDashboard = () => {
                                                                     Year
                                                                 </label>
                                                                 <select
+                                                                    aria-label="Select year for ratings month filter"
                                                                     value={ratingsSelectedMonthYear}
                                                                     onChange={(e) => setRatingsSelectedMonthYear(parseInt(e.target.value))}
                                                                     className="w-full text-xs border border-gray-300 rounded-md p-1.5 focus:ring-blue-500 focus:border-blue-500"
@@ -3846,6 +3981,8 @@ const AdminDashboard = () => {
                             Account Settings
                         </h2>
                         <button
+                            type="button"
+                            title="Close account settings"
                             onClick={() => setShowAccountSettings(false)}
                             className="text-white hover:text-gray-200 transition-colors"
                         >

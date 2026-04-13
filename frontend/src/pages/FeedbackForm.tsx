@@ -300,6 +300,7 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
                                 <div className="relative">
                                     <select
                                         name="client_type"
+                                        aria-label="Client Type"
                                         value={formData.client_type}
                                         onChange={handleChange}
                                         className="w-full appearance-none border border-gray-300 rounded-md p-2 pr-10 focus:ring-blue-500 focus:border-blue-500"
@@ -347,6 +348,7 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
                                 <div className="relative">
                                     <select
                                         name="sex"
+                                        aria-label="Sex"
                                         value={formData.sex}
                                         onChange={handleChange}
                                         className="w-full appearance-none border border-gray-300 rounded-md p-2 pr-10 focus:ring-blue-500 focus:border-blue-500"
@@ -377,6 +379,7 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
                                 <div className="relative">
                                     <select
                                         name="age"
+                                        aria-label="Age Range"
                                         value={formData.age}
                                         onChange={handleChange}
                                         className="w-full appearance-none border border-gray-300 rounded-md p-2 pr-10 focus:ring-blue-500 focus:border-blue-500"
@@ -407,6 +410,7 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
                                 <div className="relative">
                                     <select
                                         name="region"
+                                        aria-label="Region"
                                         value={formData.region}
                                         onChange={handleChange}
                                         className="w-full appearance-none border border-gray-300 rounded-md p-2 pr-10 focus:ring-blue-500 focus:border-blue-500"
@@ -437,6 +441,7 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
                                 <div className="relative">
                                     <select
                                         name="category"
+                                        aria-label="Category"
                                         value={formData.category}
                                         onChange={handleChange}
                                         className="w-full appearance-none border border-gray-300 rounded-md p-2 pr-10 focus:ring-blue-500 focus:border-blue-500"
@@ -482,6 +487,7 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
                                             key={rating}
                                             type="button"
                                             onClick={() => handleRating(rating)}
+                                            title={`Rate ${rating} star${rating !== 1 ? 's' : ''}`}
                                             className={`p-2 rounded-full transition-colors ${
                                                 formData.litpath_rating >= rating
                                                     ? 'bg-yellow-400 text-yellow-900'
