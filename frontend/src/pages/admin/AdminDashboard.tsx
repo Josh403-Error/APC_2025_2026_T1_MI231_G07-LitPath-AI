@@ -1884,6 +1884,21 @@ const AdminDashboard = () => {
                         </div>
                     </div>
                     <div className="flex items-center gap-6">
+                        <div className="hidden sm:block text-right">
+                            <div className="text-xs text-gray-400">Philippine Standard Time</div>
+                            <div className="text-sm font-medium text-white">
+                                {currentDateTime.toLocaleString('en-US', {
+                                    weekday: 'short',
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    second: '2-digit',
+                                    hour12: true
+                                })}
+                            </div>
+                        </div>
                         <div className="relative" ref={userMenuRef}>
                             <button onClick={() => setShowUserMenu(!showUserMenu)} className="flex items-center gap-2 hover:bg-white/10 p-1.5 rounded transition-colors">
                                 <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-md border border-white/20">
@@ -1991,22 +2006,6 @@ const AdminDashboard = () => {
                                 {/* ===== HEADER + DATE FILTER ===== */}
                                 <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
                                     <h2 className="text-xl font-bold text-gray-800">Thesis & Dissertation Usage</h2>
-                                    <div className="flex flex-col items-end gap-3 mr-2">
-                                        <div className="text-right">
-                                            <div className="text-xs text-gray-500">Philippine Standard Time</div>
-                                            <div className="text-sm font-medium text-gray-700">
-                                                {currentDateTime.toLocaleString('en-US', {
-                                                weekday: 'long',
-                                                year: 'numeric',
-                                                month: 'long',
-                                                day: 'numeric',
-                                                hour: '2-digit',
-                                                minute: '2-digit',
-                                                second: '2-digit',
-                                                hour12: true
-                                                })}
-                                            </div>
-                                        </div>
                                     <div className="flex gap-2">
 
                                         {/* EXPORT BUTTON */}
@@ -2203,7 +2202,6 @@ const AdminDashboard = () => {
                                                     </div>
                                                 </div>
                                             )}
-                                        </div>
                                         </div>
                                     </div>
                                 </div>
@@ -2919,28 +2917,13 @@ const AdminDashboard = () => {
 
                     {/* ----- FEEDBACK MANAGER TAB ----- */}
                     {activeTab === 'feedback' && (
-                        <div className="h-full flex flex-col bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden max-w-[1600px] mx-auto w-full">
+                        <div className="h-full flex flex-col bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden max-w-[1600px] mx-auto w-full mt-4">
                             <div className="p-4 border-b border-gray-200 bg-gray-50 flex flex-col gap-4 flex-none">
                                 {/* Row 1: Title and Clock */}
                                 <div className="flex justify-between items-start">
                                     <div>
                                         <h2 className="text-lg font-bold text-gray-800">CSM Feedback</h2>
                                         <p className="text-xs text-gray-500">Manage client satisfaction responses</p>
-                                    </div>
-                                    <div className="flex flex-col items-end gap-0">
-                                        <div className="text-xs text-gray-500">Philippine Standard Time</div>
-                                        <div className="text-sm font-medium text-gray-700">
-                                            {currentDateTime.toLocaleString('en-US', {
-                                            weekday: 'long',
-                                            year: 'numeric',
-                                            month: 'long',
-                                            day: 'numeric',
-                                            hour: '2-digit',
-                                            minute: '2-digit',
-                                            second: '2-digit',
-                                            hour12: true
-                                            })}
-                                        </div>
                                     </div>
                                 </div>
                                 {/* Row 2: Export and Filters */}
@@ -3327,21 +3310,6 @@ const AdminDashboard = () => {
                                     <div>
                                         <h2 className="text-xl font-bold text-gray-800">Content Relevance & Quality</h2>
                                         <p className="text-sm text-gray-500">Monitor user satisfaction and identify materials for archiving.</p>
-                                    </div>
-                                    <div className="flex flex-col items-end gap-0">
-                                        <div className="text-xs text-gray-500">Philippine Standard Time</div>
-                                        <div className="text-sm font-medium text-gray-700">
-                                            {currentDateTime.toLocaleString('en-US', {
-                                            weekday: 'long',
-                                            year: 'numeric',
-                                            month: 'long',
-                                            day: 'numeric',
-                                            hour: '2-digit',
-                                            minute: '2-digit',
-                                            second: '2-digit',
-                                            hour12: true
-                                            })}
-                                        </div>
                                     </div>
                                 </div>
                                 {/* Row 2: Export and Filters */}

@@ -1548,8 +1548,10 @@ return (
                 <div className="flex items-center space-x-4">
                     
                     <button
+                        type="button"
                         onClick={() => setSidebarOpen(true)}
                         className="md:hidden p-2 hover:bg-white/10 rounded-lg transition-colors"
+                        title="Toggle sidebar"
                     >
                         <Menu size={24} />
                     </button>
@@ -1777,16 +1779,20 @@ return (
                                         {mostBrowsed.length > 3 && (
                                             <>
                                                 <button
+                                                    type="button"
                                                     onClick={() => setBrowsedCurrentSlide(Math.max(0, browsedCurrentSlide - 1))}
                                                     disabled={browsedCurrentSlide === 0}
                                                     className={`absolute left-0 top-1/2 -translate-y-1/2 -translate-x-3 z-10 bg-white rounded-full shadow-lg p-1.5 hover:bg-gray-100 transition-colors ${browsedCurrentSlide === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                    title="Previous slide"
                                                 >
                                                     <ChevronLeft size={24} className="text-[#1E74BC]" />
                                                 </button>
                                                 <button
+                                                    type="button"
                                                     onClick={() => setBrowsedCurrentSlide(Math.min(mostBrowsed.length - 3, browsedCurrentSlide + 1))}
                                                     disabled={browsedCurrentSlide >= mostBrowsed.length - 3}
                                                     className={`absolute right-0 top-1/2 -translate-y-1/2 translate-x-3 z-10 bg-white rounded-full shadow-lg p-1.5 hover:bg-gray-100 transition-colors ${browsedCurrentSlide >= mostBrowsed.length - 3 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                    title="Next slide"
                                                 >
                                                     <ChevronRight size={24} className="text-[#1E74BC]" />
                                                 </button>
@@ -1880,8 +1886,10 @@ return (
                                                 {Array.from({ length: Math.ceil(mostBrowsed.length - 2) }).map((_, i) => (
                                                     <button
                                                         key={i}
+                                                        type="button"
                                                         onClick={() => setBrowsedCurrentSlide(i)}
                                                         className={`w-2 h-2 rounded-full transition-colors ${i === browsedCurrentSlide ? 'bg-[#1E74BC]' : 'bg-gray-300 hover:bg-gray-400'}`}
+                                                        title={`Go to slide ${i + 1}`}
                                                     />
                                                 ))}
                                             </div>
