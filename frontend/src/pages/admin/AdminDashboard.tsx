@@ -1884,10 +1884,6 @@ const AdminDashboard = () => {
                         </div>
                     </div>
                     <div className="flex items-center gap-6">
-                        <div className="flex items-center gap-2 bg-gray-800 px-3 py-1.5 rounded-full border border-gray-700 shadow-sm">
-                            <ShieldCheck size={16} className="text-blue-400" />
-                            <span className="text-sm font-medium text-gray-200">Admin</span>
-                        </div>
                         <div className="relative" ref={userMenuRef}>
                             <button onClick={() => setShowUserMenu(!showUserMenu)} className="flex items-center gap-2 hover:bg-white/10 p-1.5 rounded transition-colors">
                                 <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-md border border-white/20">
@@ -1900,6 +1896,10 @@ const AdminDashboard = () => {
                                     <div className="px-4 py-3 border-b border-gray-100">
                                         <p className="text-sm font-bold">{user?.full_name || 'Admin User'}</p>
                                         <p className="text-xs text-gray-500 truncate">{user?.email || 'admin@litpath.ai'}</p>
+                                        <div className="flex items-center gap-2 mt-2">
+                                            <ShieldCheck size={14} className="text-blue-600" />
+                                            <span className="text-xs font-medium text-gray-700">Admin</span>
+                                        </div>
                                     </div>
                                     {/* New Home button */}
                                     <button
