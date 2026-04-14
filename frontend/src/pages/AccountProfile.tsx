@@ -18,8 +18,7 @@ const AccountProfile = () => {
         client_type: '',
         sex: '',
         age: '',
-        region: '',
-        category: ''
+        region: ''
     });
 
     const [currentPassword, setCurrentPassword] = useState('');
@@ -45,12 +44,11 @@ const AccountProfile = () => {
             client_type: user.client_type || '',
             sex: user.sex || '',
             age: user.age || '',
-            region: user.region || '',
-            category: user.category || ''
+            region: user.region || ''
         });
     }, [user, navigate]);
 
-    const clientTypeChoices = ['Citizen', 'Business', 'Government'];
+    const clientTypeChoices = ['Student', 'DOST Employee', 'Other Government Employee', 'Librarian/Library Staff', 'Teaching Personnel', 'Administrative Personnel', 'Researcher'];
     const sexChoices = ['Female', 'Male', 'Prefer not to say'];
     const ageChoices = [
         '10 and below', '11-15', '16-20', '21-25', '26-30', '31-35',
@@ -59,10 +57,6 @@ const AccountProfile = () => {
     const regionChoices = [
         'NCR', 'CAR', 'R01', 'R02', 'R03', 'R4A', 'R4B', 'R05', 'R06', 'R07',
         'R08', 'R09', 'R10', 'R11', 'R12', 'R13', 'BARMM', 'N/A'
-    ];
-    const categoryChoices = [
-        'Student', 'DOST Employee', 'Other Government Employee', 'Librarian/Library Staff',
-        'Teaching Personnel', 'Administrative Personnel', 'Researcher'
     ];
     const schoolLevelChoices = [
         'Junior High School', 'Senior High School', 'Undergraduate', 'Graduate', 'Postgraduate'
@@ -252,17 +246,6 @@ const AccountProfile = () => {
                             >
                                 <option value="">Select region</option>
                                 {regionChoices.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="text-sm font-medium text-gray-700">User Category</label>
-                            <select
-                                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg"
-                                value={formData.category}
-                                onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-                            >
-                                <option value="">Select user category</option>
-                                {categoryChoices.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                             </select>
                         </div>
                     </div>

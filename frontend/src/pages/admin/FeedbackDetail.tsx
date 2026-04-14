@@ -274,8 +274,6 @@ const FeedbackDetail = () => {
                                         <span className="font-medium">{feedback.age || '—'}</span>
                                         <span className="text-gray-600">Region:</span>
                                         <span className="font-medium">{feedback.region || '—'}</span>
-                                        <span className="text-gray-600">User Category:</span>
-                                        <span className="font-medium">{feedback.category || '—'}</span>
                                     </div>
                                 </div>
 

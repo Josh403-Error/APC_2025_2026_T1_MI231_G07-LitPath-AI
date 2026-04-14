@@ -818,7 +818,7 @@ const AdminDashboard = () => {
             rows.push([]); // empty line
 
             // --- SECTION 2: COLUMN HEADERS ---
-            rows.push(["Date", "Rating", "User Category", "Region", "Category", "Comment", "Status"]);
+            rows.push(["Date", "Rating", "Region", "Category", "Comment", "Status"]);
 
             // --- SECTION 3: DATA ROWS ---
             filteredFeedbacks.forEach(fb => {
@@ -837,7 +837,7 @@ const AdminDashboard = () => {
                 rows.push([
                     escape(new Date(fb.created_at).toLocaleDateString()),
                     escape(ratingText),
-                    escape(fb.category || ''),
+                    escape(fb.client_type || ''),
                     escape(fb.region || ''),
                     fb.admin_category && fb.admin_category.trim() !== '' ? escape(fb.admin_category) : 'N/A',
                     escape(comment),
@@ -1611,8 +1611,6 @@ const AdminDashboard = () => {
                                                 <span className="font-medium">{selectedFeedback.age || '—'}</span>
                                                 <span className="text-gray-600">Region:</span>
                                                 <span className="font-medium">{selectedFeedback.region || '—'}</span>
-                                                <span className="text-gray-600">User Category:</span>
-                                                <span className="font-medium">{selectedFeedback.category || '—'}</span>
                                             </div>
                                         </div>
 
@@ -3164,7 +3162,6 @@ const AdminDashboard = () => {
                                         <tr>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Date</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Rating</th>
-                                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">User Category</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Region</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Category</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Comment</th>
@@ -3209,7 +3206,7 @@ const AdminDashboard = () => {
                                                         </td>
                                                         <td className="px-6 py-4 whitespace-nowrap">
                                                             <span className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded text-xs border border-blue-100 font-medium">
-                                                                {fb.category || '—'}
+                                                                {fb.client_type || '—'}
                                                             </span>
                                                         </td>
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">

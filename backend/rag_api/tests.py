@@ -61,7 +61,7 @@ class AuthRegisterHardeningTests(APITestCase):
             'full_name': 'Hardening User',
             'school_level': 'Undergraduate',
             'school_name': 'Asia Pacific College',
-            'client_type': 'Citizen',
+            'client_type': 'Student',
             'sex': 'Female',
             'age': '21-25',
             'region': 'NCR',
