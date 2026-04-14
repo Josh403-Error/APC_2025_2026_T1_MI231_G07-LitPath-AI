@@ -199,11 +199,6 @@ See your ERD implementation in `backend/rag_api/models.py` (ready to add):
 
 ## 🔧 Development
 
-### Run Tests
-```powershell
-cd backend
-python manage.py test
-```
 
 ### Create Admin User
 ```powershell

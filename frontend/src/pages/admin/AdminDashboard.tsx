@@ -818,8 +818,7 @@ const AdminDashboard = () => {
             rows.push([]); // empty line
 
             // --- SECTION 2: COLUMN HEADERS ---
-            rows.push(["Date", "Rating", "User Category", "Region", "Category", "Comment", "Status"]);
-
+            rows.push(["Date", "Rating", "User Category", "Region", "Feedback Type", "Comment", "Status"]);
             // --- SECTION 3: DATA ROWS ---
             filteredFeedbacks.forEach(fb => {
                 // Rating as words (e.g., "5 stars", "1 star")
@@ -835,7 +834,7 @@ const AdminDashboard = () => {
                     : 'N/A';
 
                 rows.push([
-                    escape(new Date(fb.created_at).toLocaleDateString()),
+                    escape(new Date(fb.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })),
                     escape(ratingText),
                     escape(fb.category || ''),
                     escape(fb.region || ''),
@@ -1461,7 +1460,7 @@ const AdminDashboard = () => {
 
             filteredRatings.forEach(r => {
                 const date = new Date(r.created_at);
-                const dateStr = !isNaN(date) ? date.toLocaleDateString() : '-';
+                const dateStr = !isNaN(date) ? date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '-';
                 const title = r.material_title || r.document_file || 'Unknown';
                 const rating = r.relevant === true ? 'Helpful' : 'Not Relevant';
                 const score = r.relevant === true ? 1 : 0;
@@ -1604,7 +1603,7 @@ const AdminDashboard = () => {
                                                 <span className="text-gray-600">Client Type:</span>
                                                 <span className="font-medium">{selectedFeedback.client_type || '—'}</span>
                                                 <span className="text-gray-600">Date of Interaction:</span>
-                                                <span className="font-medium">{selectedFeedback.date || '—'}</span>
+                                                <span className="font-medium">{selectedFeedback.date ? new Date(selectedFeedback.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '—'}</span>
                                                 <span className="text-gray-600">Sex:</span>
                                                 <span className="font-medium">{selectedFeedback.sex || '—'}</span>
                                                 <span className="text-gray-600">Age:</span>
@@ -1700,7 +1699,7 @@ const AdminDashboard = () => {
                                         {/* Category - Editable */}
                                         <div>
                                             <label className="block text-sm font-bold text-gray-700 mb-2">
-                                                Category <span className="text-red-500">*</span>
+                                                Feedback Type <span className="text-red-500">*</span>
                                             </label>
                                             {isEditingFeedback ? (
                                                 <select
@@ -1709,15 +1708,15 @@ const AdminDashboard = () => {
                                                     value={feedbackEditForm.admin_category}
                                                     onChange={(e) => setFeedbackEditForm({ ...feedbackEditForm, admin_category: e.target.value })}
                                                 >
-                                                    <option value="" disabled>Select Category</option>
-                                                    <option value="General">General</option>
+                                                    <option value="" disabled>Select Feedback Type</option>
+                                                    <option value="Irrelevant">Irrelevant</option>
                                                     <option value="Positive">Positive</option>
                                                     <option value="Issue">Issue / Bug</option>
                                                     <option value="For Improvement">For Improvement</option>
                                                 </select>
                                             ) : (
                                                 <span className="px-3 py-2 inline-flex text-sm leading-5 font-semibold rounded-full bg-blue-50 text-blue-700 border border-blue-100">
-                                                    {selectedFeedback.admin_category || selectedFeedback.category || 'General'}
+                                                    {selectedFeedback.admin_category || selectedFeedback.category || 'Irrelevant'}
                                                 </span>
                                             )}
                                         </div>
@@ -3166,7 +3165,7 @@ const AdminDashboard = () => {
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Rating</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">User Category</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Region</th>
-                                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Category</th>
+                                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Feedback Type</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Comment</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
                                         </tr>
@@ -3199,7 +3198,7 @@ const AdminDashboard = () => {
                                                 return paginatedFeedback.map((fb) => (
                                                     <tr key={fb.id} className="hover:bg-gray-50 transition-colors cursor-pointer group" onClick={() => handleFeedbackClick(fb)} title="View details">
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">
-                                                            {new Date(fb.created_at).toLocaleDateString()}
+                                                            {new Date(fb.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
                                                         </td>
                                                         <td className="px-6 py-4 whitespace-nowrap">
                                                             <div className="flex items-center text-yellow-500">
