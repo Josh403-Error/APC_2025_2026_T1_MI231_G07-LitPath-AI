@@ -818,7 +818,7 @@ const AdminDashboard = () => {
             rows.push([]); // empty line
 
             // --- SECTION 2: COLUMN HEADERS ---
-            rows.push(["Date", "Rating", "Region", "Category", "Comment", "Status"]);
+            rows.push(["Date", "Rating", "Client Type", "Region", "Category", "Comment", "Status"]);
 
             // --- SECTION 3: DATA ROWS ---
             filteredFeedbacks.forEach(fb => {
@@ -1715,7 +1715,7 @@ const AdminDashboard = () => {
                                                 </select>
                                             ) : (
                                                 <span className="px-3 py-2 inline-flex text-sm leading-5 font-semibold rounded-full bg-blue-50 text-blue-700 border border-blue-100">
-                                                    {selectedFeedback.admin_category || selectedFeedback.category || 'General'}
+                                                    {selectedFeedback.admin_category || 'General'}
                                                 </span>
                                             )}
                                         </div>
@@ -3162,6 +3162,7 @@ const AdminDashboard = () => {
                                         <tr>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Date</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Rating</th>
+                                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Client Type</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Region</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Category</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Comment</th>
@@ -3170,7 +3171,7 @@ const AdminDashboard = () => {
                                     </thead>
                                     <tbody className="bg-white divide-y divide-gray-200">
                                         {feedbacks.length === 0 ? (
-                                            <tr><td colSpan="7" className="px-6 py-10 text-center text-gray-500 text-sm">No feedback records found.</td></tr>
+                                            <tr><td colSpan="8" className="px-6 py-10 text-center text-gray-500 text-sm">No feedback records found.</td></tr>
                                         ) : (
                                             (() => {
                                                 const filtered = feedbacks
@@ -3180,7 +3181,7 @@ const AdminDashboard = () => {
                                                 if (filtered.length === 0) {
                                                     return (
                                                         <tr>
-                                                            <td colSpan="7" className="px-6 py-10 text-center text-gray-500 text-sm">
+                                                            <td colSpan="8" className="px-6 py-10 text-center text-gray-500 text-sm">
                                                                 No records match your filter.
                                                             </td>
                                                         </tr>
@@ -3212,8 +3213,8 @@ const AdminDashboard = () => {
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                                                             {fb.region || '—'}
                                                         </td>
-                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">   {/* NEW */}
-                                                            {fb.admin_category || '—'}
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                                            {fb.category || '—'}
                                                         </td>
                                                         <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
                                                             {fb.message_comment || <span className="text-gray-400 italic">No comment</span>}
