@@ -1364,6 +1364,197 @@ const AdminDashboard = () => {
         }
     };
 
+    // ---------- Overview Export Data to PDF ----------
+    const handleExportPDF = async () => {
+        try {
+            // Dynamically import jsPDF
+            const jsPDF = await import('jspdf').then(module => module.default);
+            const doc = new jsPDF();
+            let yPos = 20;
+            const pageWidth = doc.internal.pageSize.width;
+            
+            // 1. Generate a descriptive filter text for the export
+            let filterText = '';
+            if (overviewDateFilterType === 'Year') filterText = `Year ${overviewSelectedYear}`;
+            else if (overviewDateFilterType === 'Month') filterText = `${new Date(0, overviewSelectedMonth - 1).toLocaleString('default', { month: 'long' })} ${overviewSelectedMonthYear}`;
+            else if (overviewDateFilterType === 'Last 7 days') filterText = 'Last 7 days';
+            else filterText = `${overviewCustomFrom} to ${overviewCustomTo}`;
+
+            // Show loading message
+            showToast('Generating PDF report...', 'info');
+
+            // Title
+            doc.setFontSize(18);
+            doc.text("LITPATH AI - DASHBOARD REPORT", pageWidth / 2, yPos, { align: 'center' });
+            yPos += 10;
+            
+            // Report header
+            doc.setFontSize(12);
+            doc.text(`Date Filter Applied: ${filterText}`, 20, yPos);
+            yPos += 6;
+            doc.text(`Exported On: ${new Date().toLocaleString()}`, 20, yPos);
+            yPos += 10;
+            
+            // KPIs Section
+            doc.setFontSize(14);
+            doc.text("KEY PERFORMANCE INDICATORS", 20, yPos);
+            yPos += 8;
+            doc.setFontSize(10);
+            doc.text(`Total Theses: ${dashboardData.kpi.totalDocuments}`, 20, yPos);
+            yPos += 5;
+            doc.text(`Total Searches: ${dashboardData.kpi.totalSearches}`, 20, yPos);
+            yPos += 5;
+            doc.text(`Collection Utilisation (%): ${dashboardData.kpi.utilizationPercent}`, 20, yPos);
+            yPos += 5;
+            doc.text(`Avg Response Time (ms): ${dashboardData.kpi.avgResponseTime}`, 20, yPos);
+            yPos += 5;
+            doc.text(`Failed Queries: ${dashboardData.failedQueriesCount}`, 20, yPos);
+            yPos += 10;
+            
+            // Top Theses Section
+            doc.setFontSize(14);
+            doc.text("TOP THESES BROWSED", 20, yPos);
+            yPos += 8;
+            doc.setFontSize(10);
+            doc.text("Rank | Title | Author | Year | Degree | Views | Avg Rating", 20, yPos);
+            yPos += 5;
+            
+            // Add top theses data
+            if (dashboardData.topTheses && dashboardData.topTheses.length > 0) {
+                dashboardData.topTheses.forEach((t, i) => {
+                    if (yPos > 250) { // Add new page if needed
+                        doc.addPage();
+                        yPos = 20;
+                    }
+                    
+                    const thesisLine = `${i + 1} | ${t.title.substring(0, 20)}... | ${t.author.substring(0, 15)}... | ${t.year || '-'} | ${t.degree || '-'} | ${t.view_count} | ${t.avg_rating || '-'}`;
+                    doc.text(thesisLine, 20, yPos);
+                    yPos += 5;
+                });
+            } else {
+                doc.text("No top theses data available.", 20, yPos);
+                yPos += 5;
+            }
+            
+            yPos += 10;
+            
+            // Usage by Category Section
+            doc.setFontSize(14);
+            doc.text("USAGE BY CATEGORY", 20, yPos);
+            yPos += 8;
+            doc.setFontSize(10);
+            doc.text("Category | User Count | Percentage (%)", 20, yPos);
+            yPos += 5;
+            
+            // Add usage by category data
+            if (dashboardData.usageByCategory && dashboardData.usageByCategory.length > 0) {
+                dashboardData.usageByCategory.forEach(c => {
+                    if (yPos > 250) { // Add new page if needed
+                        doc.addPage();
+                        yPos = 20;
+                    }
+                    
+                    const categoryLine = `${c.category.substring(0, 20)}... | ${c.views} | ${c.percentage}%`;
+                    doc.text(categoryLine, 20, yPos);
+                    yPos += 5;
+                });
+            } else {
+                doc.text("No usage by category data available.", 20, yPos);
+                yPos += 5;
+            }
+            
+            yPos += 10;
+            
+            // Age Distribution Section
+            doc.setFontSize(14);
+            doc.text("AGE DISTRIBUTION", 20, yPos);
+            yPos += 8;
+            doc.setFontSize(10);
+            doc.text("Age Group | User Count | Percentage (%)", 20, yPos);
+            yPos += 5;
+            
+            // Add age distribution data
+            if (dashboardData.ageDistribution && dashboardData.ageDistribution.length > 0) {
+                dashboardData.ageDistribution.forEach(a => {
+                    if (yPos > 250) { // Add new page if needed
+                        doc.addPage();
+                        yPos = 20;
+                    }
+                    
+                    const ageLine = `${a.age} | ${a.count} | ${a.percentage}%`;
+                    doc.text(ageLine, 20, yPos);
+                    yPos += 5;
+                });
+            } else {
+                doc.text("No age distribution data available.", 20, yPos);
+                yPos += 5;
+            }
+            
+            yPos += 10;
+            
+            // Activity Trends Section
+            doc.setFontSize(14);
+            doc.text("ACTIVITY TRENDS (Views)", 20, yPos);
+            yPos += 8;
+            doc.setFontSize(10);
+            doc.text("Date Range | Total Views", 20, yPos);
+            yPos += 5;
+            
+            // Add activity trends data
+            if (dashboardData.trends && dashboardData.trends.length > 0) {
+                dashboardData.trends.forEach(t => {
+                    if (yPos > 250) { // Add new page if needed
+                        doc.addPage();
+                        yPos = 20;
+                    }
+                    
+                    const trendLine = `${t.tooltipRange || t.label || t.month} | ${t.views}`;
+                    doc.text(trendLine, 20, yPos);
+                    yPos += 5;
+                });
+            } else {
+                doc.text("No activity trends data available.", 20, yPos);
+                yPos += 5;
+            }
+            
+            yPos += 10;
+            
+            // Citation Activity Section
+            doc.setFontSize(14);
+            doc.text("CITATION ACTIVITY", 20, yPos);
+            yPos += 8;
+            doc.setFontSize(10);
+            doc.text(`Total Citations Copied: ${dashboardData.citationStats.total_copies}`, 20, yPos);
+            yPos += 5;
+            doc.text("Date Range | Copies", 20, yPos);
+            yPos += 5;
+            
+            // Add citation activity data
+            if (dashboardData.citationTrends && dashboardData.citationTrends.length > 0) {
+                dashboardData.citationTrends.forEach(c => {
+                    if (yPos > 250) { // Add new page if needed
+                        doc.addPage();
+                        yPos = 20;
+                    }
+                    
+                    const citationLine = `${c.tooltipRange || c.label || c.month} | ${c.copies}`;
+                    doc.text(citationLine, 20, yPos);
+                    yPos += 5;
+                });
+            } else {
+                doc.text("No citation activity data available.", 20, yPos);
+                yPos += 5;
+            }
+            
+            // Save the PDF
+            doc.save(`LitPathAI_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
+            showToast('Report exported to PDF successfully!', 'success');
+        } catch (error) {
+            console.error("Overview PDF export failed:", error);
+            showToast('Failed to generate PDF export. Please try again.', 'error');
+        }
+    };
+
 
     // ---------- Material Ratings Export Data to CSV ----------
     const handleRatingsExportCSV = async () => {
@@ -2007,14 +2198,24 @@ const AdminDashboard = () => {
                                     <h2 className="text-xl font-bold text-gray-800">Thesis & Dissertation Usage</h2>
                                     <div className="flex gap-2">
 
-                                        {/* EXPORT BUTTON */}
+                                        {/* EXPORT CSV BUTTON */}
                                         <button
                                             onClick={handleExportCSV}
                                             className="flex items-center space-x-2 px-3 py-1.5 border border-[#1E74BC] rounded-md bg-white text-[#1E74BC] hover:bg-blue-50 text-xs font-bold transition-colors shadow-sm"
                                             title="Export current data to CSV"
                                         >
                                             <Download size={14} />
-                                            <span>Export Data</span>
+                                            <span>Export CSV</span>
+                                        </button>
+
+                                        {/* EXPORT PDF BUTTON */}
+                                        <button
+                                            onClick={handleExportPDF}
+                                            className="flex items-center space-x-2 px-3 py-1.5 border border-[#1E74BC] rounded-md bg-white text-[#1E74BC] hover:bg-blue-50 text-xs font-bold transition-colors shadow-sm"
+                                            title="Export current data to PDF"
+                                        >
+                                            <Download size={14} />
+                                            <span>Export PDF</span>
                                         </button>
 
                                         {/* Date Filter Dropdown */}
