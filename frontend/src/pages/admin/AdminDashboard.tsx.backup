@@ -819,7 +819,6 @@ const AdminDashboard = () => {
 
             // --- SECTION 2: COLUMN HEADERS ---
             rows.push(["Date", "Rating", "User Category", "Region", "Feedback Type", "Comment", "Status"]);
-
             // --- SECTION 3: DATA ROWS ---
             filteredFeedbacks.forEach(fb => {
                 // Rating as words (e.g., "5 stars", "1 star")
@@ -834,11 +833,10 @@ const AdminDashboard = () => {
                     ? fb.message_comment
                     : 'N/A';
 
-
                 rows.push([
                     escape(new Date(fb.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })),
                     escape(ratingText),
-                    escape(fb.client_type || ''),
+                    escape(fb.category || ''),
                     escape(fb.region || ''),
                     fb.admin_category && fb.admin_category.trim() !== '' ? escape(fb.admin_category) : 'N/A',
                     escape(comment),
@@ -1367,53 +1365,47 @@ const AdminDashboard = () => {
     };
 
     // ---------- Overview Export Data to PDF ----------
-    const handleExportPDF = async () => {
-        try {
-            // Dynamically import jsPDF
-            const jsPDF = await import('jspdf').then(module => module.default);
-            const doc = new jsPDF();
+    const handleExportPDF = () => {
+        import('jspdf').then((jsPDF) => {
+            const doc = new jsPDF.default();
             let yPos = 20;
             const pageWidth = doc.internal.pageSize.width;
             
-            // 1. Generate a descriptive filter text for the export
-            let filterText = '';
-            if (overviewDateFilterType === 'Year') filterText = `Year ${overviewSelectedYear}`;
-            else if (overviewDateFilterType === 'Month') filterText = `${new Date(0, overviewSelectedMonth - 1).toLocaleString('default', { month: 'long' })} ${overviewSelectedMonthYear}`;
-            else if (overviewDateFilterType === 'Last 7 days') filterText = 'Last 7 days';
-            else filterText = `${overviewCustomFrom} to ${overviewCustomTo}`;
-
-            // Show loading message
-            showToast('Generating PDF report...', 'info');
-
             // Title
             doc.setFontSize(18);
             doc.text("LITPATH AI - DASHBOARD REPORT", pageWidth / 2, yPos, { align: 'center' });
             yPos += 10;
             
-            // Report header
+            // Date filter info
+            let filterText = '';
+            if (overviewDateFilterType === 'Year') filterText = `Year ${overviewSelectedYear}`;
+            else if (overviewDateFilterType === 'Month') filterText = `${new Date(0, overviewSelectedMonth - 1).toLocaleString('default', { month: 'long' })} ${overviewSelectedMonthYear}`;
+            else if (overviewDateFilterType === 'Last 7 days') filterText = 'Last 7 days';
+            else filterText = `${overviewCustomFrom} to ${overviewCustomTo}`;
+            
             doc.setFontSize(12);
             doc.text(`Date Filter Applied: ${filterText}`, 20, yPos);
-            yPos += 6;
+            yPos += 8;
             doc.text(`Exported On: ${new Date().toLocaleString()}`, 20, yPos);
-            yPos += 10;
+            yPos += 15;
             
-            // KPIs Section
+            // KPIs
             doc.setFontSize(14);
             doc.text("KEY PERFORMANCE INDICATORS", 20, yPos);
             yPos += 8;
-            doc.setFontSize(10);
+            doc.setFontSize(12);
             doc.text(`Total Theses: ${dashboardData.kpi.totalDocuments}`, 20, yPos);
-            yPos += 5;
+            yPos += 6;
             doc.text(`Total Searches: ${dashboardData.kpi.totalSearches}`, 20, yPos);
-            yPos += 5;
+            yPos += 6;
             doc.text(`Collection Utilisation (%): ${dashboardData.kpi.utilizationPercent}`, 20, yPos);
-            yPos += 5;
+            yPos += 6;
             doc.text(`Avg Response Time (ms): ${dashboardData.kpi.avgResponseTime}`, 20, yPos);
-            yPos += 5;
+            yPos += 6;
             doc.text(`Failed Queries: ${dashboardData.failedQueriesCount}`, 20, yPos);
-            yPos += 10;
+            yPos += 15;
             
-            // Top Theses Section
+            // Top Theses Header
             doc.setFontSize(14);
             doc.text("TOP THESES BROWSED", 20, yPos);
             yPos += 8;
@@ -1421,26 +1413,19 @@ const AdminDashboard = () => {
             doc.text("Rank | Title | Author | Year | Degree | Views | Avg Rating", 20, yPos);
             yPos += 5;
             
-            // Add top theses data
-            if (dashboardData.topTheses && dashboardData.topTheses.length > 0) {
-                dashboardData.topTheses.forEach((t, i) => {
-                    if (yPos > 250) { // Add new page if needed
-                        doc.addPage();
-                        yPos = 20;
-                    }
-                    
-                    const thesisLine = `${i + 1} | ${t.title.substring(0, 20)}... | ${t.author.substring(0, 15)}... | ${t.year || '-'} | ${t.degree || '-'} | ${t.view_count} | ${t.avg_rating || '-'}`;
-                    doc.text(thesisLine, 20, yPos);
-                    yPos += 5;
-                });
-            } else {
-                doc.text("No top theses data available.", 20, yPos);
+            // Top Theses Data
+            dashboardData.topTheses.forEach((t, i) => {
+                if (yPos > 250) { // Add new page if needed
+                    doc.addPage();
+                    yPos = 20;
+                }
+                const thesisLine = `${i + 1} | ${t.title.substring(0, 30)}... | ${t.author} | ${t.year} | ${t.degree} | ${t.view_count} | ${t.avg_rating}`;
+                doc.text(thesisLine, 20, yPos);
                 yPos += 5;
-            }
-            
+            });
             yPos += 10;
             
-            // Usage by Category Section
+            // Usage by Category Header
             doc.setFontSize(14);
             doc.text("USAGE BY CATEGORY", 20, yPos);
             yPos += 8;
@@ -1448,26 +1433,19 @@ const AdminDashboard = () => {
             doc.text("Category | User Count | Percentage (%)", 20, yPos);
             yPos += 5;
             
-            // Add usage by category data
-            if (dashboardData.usageByCategory && dashboardData.usageByCategory.length > 0) {
-                dashboardData.usageByCategory.forEach(c => {
-                    if (yPos > 250) { // Add new page if needed
-                        doc.addPage();
-                        yPos = 20;
-                    }
-                    
-                    const categoryLine = `${c.category.substring(0, 20)}... | ${c.views} | ${c.percentage}%`;
-                    doc.text(categoryLine, 20, yPos);
-                    yPos += 5;
-                });
-            } else {
-                doc.text("No usage by category data available.", 20, yPos);
+            // Usage by Category Data
+            dashboardData.usageByCategory.forEach(c => {
+                if (yPos > 250) { // Add new page if needed
+                    doc.addPage();
+                    yPos = 20;
+                }
+                const categoryLine = `${c.category} | ${c.views} | ${c.percentage}%`;
+                doc.text(categoryLine, 20, yPos);
                 yPos += 5;
-            }
-            
+            });
             yPos += 10;
             
-            // Age Distribution Section
+            // Age Distribution Header
             doc.setFontSize(14);
             doc.text("AGE DISTRIBUTION", 20, yPos);
             yPos += 8;
@@ -1475,26 +1453,19 @@ const AdminDashboard = () => {
             doc.text("Age Group | User Count | Percentage (%)", 20, yPos);
             yPos += 5;
             
-            // Add age distribution data
-            if (dashboardData.ageDistribution && dashboardData.ageDistribution.length > 0) {
-                dashboardData.ageDistribution.forEach(a => {
-                    if (yPos > 250) { // Add new page if needed
-                        doc.addPage();
-                        yPos = 20;
-                    }
-                    
-                    const ageLine = `${a.age} | ${a.count} | ${a.percentage}%`;
-                    doc.text(ageLine, 20, yPos);
-                    yPos += 5;
-                });
-            } else {
-                doc.text("No age distribution data available.", 20, yPos);
+            // Age Distribution Data
+            dashboardData.ageDistribution.forEach(a => {
+                if (yPos > 250) { // Add new page if needed
+                    doc.addPage();
+                    yPos = 20;
+                }
+                const ageLine = `${a.age} | ${a.count} | ${a.percentage}%`;
+                doc.text(ageLine, 20, yPos);
                 yPos += 5;
-            }
-            
+            });
             yPos += 10;
             
-            // Activity Trends Section
+            // Activity Trends Header
             doc.setFontSize(14);
             doc.text("ACTIVITY TRENDS (Views)", 20, yPos);
             yPos += 8;
@@ -1502,61 +1473,50 @@ const AdminDashboard = () => {
             doc.text("Date Range | Total Views", 20, yPos);
             yPos += 5;
             
-            // Add activity trends data
-            if (dashboardData.trends && dashboardData.trends.length > 0) {
-                dashboardData.trends.forEach(t => {
-                    if (yPos > 250) { // Add new page if needed
-                        doc.addPage();
-                        yPos = 20;
-                    }
-                    
-                    const trendLine = `${t.tooltipRange || t.label || t.month} | ${t.views}`;
-                    doc.text(trendLine, 20, yPos);
-                    yPos += 5;
-                });
-            } else {
-                doc.text("No activity trends data available.", 20, yPos);
+            // Activity Trends Data
+            dashboardData.trends.forEach(t => {
+                if (yPos > 250) { // Add new page if needed
+                    doc.addPage();
+                    yPos = 20;
+                }
+                const trendLine = `${t.tooltipRange || t.label || t.month} | ${t.views}`;
+                doc.text(trendLine, 20, yPos);
                 yPos += 5;
-            }
-            
+            });
             yPos += 10;
             
-            // Citation Activity Section
+            // Citation Activity Header
             doc.setFontSize(14);
             doc.text("CITATION ACTIVITY", 20, yPos);
             yPos += 8;
             doc.setFontSize(10);
-            doc.text(`Total Citations Copied: ${dashboardData.citationStats.total_copies}`, 20, yPos);
+            doc.text("Total Citations Copied", 20, yPos);
+            doc.text(dashboardData.citationStats.total_copies.toString(), pageWidth - 20, yPos, { align: 'right' });
             yPos += 5;
             doc.text("Date Range | Copies", 20, yPos);
             yPos += 5;
             
-            // Add citation activity data
+            // Citation Activity Data
             if (dashboardData.citationTrends && dashboardData.citationTrends.length > 0) {
                 dashboardData.citationTrends.forEach(c => {
                     if (yPos > 250) { // Add new page if needed
                         doc.addPage();
                         yPos = 20;
                     }
-                    
                     const citationLine = `${c.tooltipRange || c.label || c.month} | ${c.copies}`;
                     doc.text(citationLine, 20, yPos);
                     yPos += 5;
                 });
-            } else {
-                doc.text("No citation activity data available.", 20, yPos);
-                yPos += 5;
             }
             
             // Save the PDF
             doc.save(`LitPathAI_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
             showToast('Report exported to PDF successfully!', 'success');
-        } catch (error) {
-            console.error("Overview PDF export failed:", error);
+        }).catch(err => {
+            console.error("PDF export failed:", err);
             showToast('Failed to generate PDF export. Please try again.', 'error');
-        }
+        });
     };
-
 
     // ---------- Material Ratings Export Data to CSV ----------
     const handleRatingsExportCSV = async () => {
@@ -1722,9 +1682,258 @@ const AdminDashboard = () => {
 
         } catch (error) {
             // --- EXCEPTION HANDLING FOR E2: Export Generation Failure ---
-            console.error("Export generation failed:", error);
+            console.error("Material ratings export failed:", error);
             showToast('Failed to generate export file. Please try again.', 'error');
         }
+    };
+
+    // ---------- Material Ratings Export Data to PDF ----------
+    const handleRatingsExportPDF = async () => {
+        import('jspdf').then(async (jsPDF) => {
+            const doc = new jsPDF.default();
+            let yPos = 20;
+            const pageWidth = doc.internal.pageSize.width;
+            
+            // 1. Basic check
+            if (!filteredRatings || filteredRatings.length === 0) {
+                showToast('No ratings data to export', 'error');
+                return;
+            }
+
+            showToast('Generating PDF report...', 'info');
+
+            // 2. Determine the date range based on the current filter
+            let fromDateStr = '', toDateStr = '', filterDescription = '';
+            if (ratingsDateFilterType === 'Year') {
+                fromDateStr = `${ratingsSelectedYear}-01-01`;
+                toDateStr = `${ratingsSelectedYear}-12-31`;
+                filterDescription = `Year ${ratingsSelectedYear}`;
+            } else if (ratingsDateFilterType === 'Month') {
+                const year = ratingsSelectedMonthYear;
+                const month = String(ratingsSelectedMonth).padStart(2, '0');
+                const daysInMonth = new Date(year, ratingsSelectedMonth, 0).getDate();
+                fromDateStr = `${year}-${month}-01`;
+                toDateStr = `${year}-${month}-${daysInMonth}`;
+                const monthName = new Date(year, ratingsSelectedMonth - 1).toLocaleString('default', { month: 'long' });
+                filterDescription = `${monthName} ${year}`;
+            } else if (ratingsDateFilterType === 'Last 7 days') {
+                const to = new Date();
+                const from = new Date();
+                from.setDate(to.getDate() - 7);
+                fromDateStr = from.toISOString().slice(0, 10);
+                toDateStr = to.toISOString().slice(0, 10);
+                filterDescription = `Last 7 days (${from.toLocaleDateString()} to ${to.toLocaleDateString()})`;
+            } else if (ratingsDateFilterType === 'Custom range' && ratingsCustomFrom && ratingsCustomTo) {
+                fromDateStr = ratingsCustomFrom;
+                toDateStr = ratingsCustomTo;
+                filterDescription = `${fromDateStr} to ${toDateStr}`;
+            } else {
+                // 'All' – no specific range
+                filterDescription = 'All time';
+            }
+
+            // 3. FETCH LEAST ACCESSED MATERIALS (dormant list)
+            let allLeastAccessed = [];
+            try {
+                const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+                const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+                const response = await fetch(`${API_BASE_URL}/dashboard/least-browsed/?limit=1000`, {
+                    headers: headers
+                });
+                if (response.ok) {
+                    allLeastAccessed = await response.json();
+                } else {
+                    console.warn('Failed to fetch least accessed materials, status:', response.status);
+                }
+            } catch (error) {
+                console.error('Error fetching least accessed materials:', error);
+            }
+
+            // Title
+            doc.setFontSize(18);
+            doc.text("LITPATH AI - CONTENT QUALITY REPORT", pageWidth / 2, yPos, { align: 'center' });
+            yPos += 10;
+            
+            // Report header
+            doc.setFontSize(12);
+            doc.text(`Export Date: ${new Date().toLocaleDateString()}`, 20, yPos);
+            yPos += 6;
+            doc.text(`Filter Period: ${filterDescription}`, 20, yPos);
+            yPos += 6;
+            doc.text(`Total Ratings (filtered): ${filteredRatings.length}`, 20, yPos);
+            
+            const dormantCount = allLeastAccessed.filter(m => m.view_count === 0).length;
+            yPos += 6;
+            doc.text(`Dormant Materials (0 Views): ${dormantCount}`, 20, yPos);
+            yPos += 10;
+            
+            // Ratings Log Header
+            doc.setFontSize(14);
+            doc.text("RATINGS LOG", 20, yPos);
+            yPos += 8;
+            doc.setFontSize(10);
+            doc.text("Date | Material Title | Rating | Score | Comment", 20, yPos);
+            yPos += 5;
+            
+            // Ratings Log Data
+            filteredRatings.forEach(r => {
+                if (yPos > 250) { // Add new page if needed
+                    doc.addPage();
+                    yPos = 20;
+                }
+                
+                const date = new Date(r.created_at);
+                const dateStr = !isNaN(date) ? date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '-';
+                const title = r.material_title || r.document_file || 'Unknown';
+                const rating = r.relevant === true ? 'Helpful' : 'Not Relevant';
+                const score = r.relevant === true ? 1 : 0;
+                const comment = r.message_comment && r.message_comment.trim() !== '' ? r.message_comment : '-';
+                
+                const ratingLine = `${dateStr} | ${title.substring(0, 30)}... | ${rating} | ${score} | ${comment.substring(0, 30)}...`;
+                doc.text(ratingLine, 20, yPos);
+                yPos += 5;
+            });
+            
+            yPos += 10;
+            
+            // Least Accessed Materials Header
+            doc.setFontSize(14);
+            doc.text("--- PART 2: LEAST ACCESSED MATERIALS (ARCHIVE CANDIDATES) ---", 20, yPos);
+            yPos += 8;
+            doc.setFontSize(10);
+            doc.text("Material Title | Year | Last Accessed | Total Views | Status", 20, yPos);
+            yPos += 5;
+            
+            // Least Accessed Materials Data
+            if (allLeastAccessed && allLeastAccessed.length > 0) {
+                allLeastAccessed.forEach(m => {
+                    if (yPos > 250) { // Add new page if needed
+                        doc.addPage();
+                        yPos = 20;
+                    }
+                    
+                    const lastAccess = m.last_accessed ? new Date(m.last_accessed).toLocaleDateString() : 'Never';
+                    const views = m.view_count || 0;
+                    // New Logic (Smart Labeling)
+                    let status = "Active"; // Default for high views
+                    if (views === 0) {
+                        status = "DORMANT (0 Views)";
+                    } else if (views < 20) { // Set your own threshold for "Low"
+                        status = "Low Engagement";
+                    } else if (views < 100) { // Set your own threshold for "Moderate"
+                        status = "Moderate Engagement";
+                    } else {
+                        status = "High Engagement";
+                    }
+                    
+                    const materialLine = `${m.title?.substring(0, 20) || m.file?.substring(0, 20) || 'Unknown'}... | ${m.year || '-'} | ${lastAccess} | ${views} | ${status}`;
+                    doc.text(materialLine, 20, yPos);
+                    yPos += 5;
+                });
+            } else {
+                if (yPos > 250) { // Add new page if needed
+                    doc.addPage();
+                    yPos = 20;
+                }
+                doc.text("Note: No least accessed data found. (Check API connection)", 20, yPos);
+                yPos += 5;
+            }
+            
+            // Save the PDF
+            doc.save(`LitPathAI_MaterialReport_${new Date().toISOString().slice(0, 10)}.pdf`);
+            showToast('Material report exported to PDF successfully!', 'success');
+        }).catch(err => {
+            console.error("Material ratings PDF export failed:", err);
+            showToast('Failed to generate PDF export. Please try again.', 'error');
+        });
+    };
+
+    // ---------- Feedback Manager Export Data to PDF ----------
+    const handleFeedbackExportPDF = () => {
+        import('jspdf').then((jsPDF) => {
+            const doc = new jsPDF.default();
+            let yPos = 20;
+            const pageWidth = doc.internal.pageSize.width;
+            
+            const filteredFeedbacks = getFilteredFeedbacks();
+            if (filteredFeedbacks.length === 0) {
+                showToast('No data to export', 'error');
+                return;
+            }
+
+            // Determine filter description based on current feedback filter
+            let filterDescription = '';
+            if (feedbackDateFilterType === 'Year') {
+                filterDescription = `Year ${feedbackSelectedYear}`;
+            } else if (feedbackDateFilterType === 'Month') {
+                const monthName = new Date(feedbackSelectedMonthYear, feedbackSelectedMonth - 1)
+                    .toLocaleString('default', { month: 'long' });
+                filterDescription = `${monthName} ${feedbackSelectedMonthYear}`;
+            } else if (feedbackDateFilterType === 'Last 7 days') {
+                const to = new Date();
+                const from = new Date();
+                from.setDate(to.getDate() - 7);
+                filterDescription = `Last 7 days (${from.toLocaleDateString()} to ${to.toLocaleDateString()})`;
+            } else if (feedbackDateFilterType === 'Custom range' && feedbackCustomFrom && feedbackCustomTo) {
+                filterDescription = `${feedbackCustomFrom} to ${feedbackCustomTo}`;
+            } else {
+                filterDescription = 'All time';
+            }
+
+            // Title
+            doc.setFontSize(18);
+            doc.text("LITPATH AI - FEEDBACK REPORT", pageWidth / 2, yPos, { align: 'center' });
+            yPos += 10;
+            
+            // Report header
+            doc.setFontSize(12);
+            doc.text(`Export Date: ${new Date().toLocaleDateString()}`, 20, yPos);
+            yPos += 6;
+            doc.text(`Filter Period: ${filterDescription}`, 20, yPos);
+            yPos += 6;
+            doc.text(`Total Feedback Entries: ${filteredFeedbacks.length}`, 20, yPos);
+            yPos += 10;
+            
+            // Column Headers
+            doc.setFontSize(14);
+            doc.text("FEEDBACK ENTRIES", 20, yPos);
+            yPos += 8;
+            doc.setFontSize(10);
+            doc.text("Date | Rating | User Category | Region | Feedback Type | Comment | Status", 20, yPos);
+            yPos += 5;
+            
+            // Data Rows
+            filteredFeedbacks.forEach(fb => {
+                if (yPos > 250) { // Add new page if needed
+                    doc.addPage();
+                    yPos = 20;
+                }
+                
+                // Rating as words (e.g., "5 stars", "1 star")
+                let ratingText = '';
+                if (fb.litpath_rating) {
+                    const num = fb.litpath_rating;
+                    ratingText = `${num} star${num > 1 ? 's' : ''}`;
+                }
+
+                // Comment: use "N/A" if empty
+                const comment = fb.message_comment && fb.message_comment.trim() !== ''
+                    ? fb.message_comment.substring(0, 30) + '...'
+                    : 'N/A';
+
+                const feedbackLine = `${new Date(fb.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} | ${ratingText} | ${fb.category || ''} | ${fb.region || ''} | ${fb.admin_category && fb.admin_category.trim() !== '' ? fb.admin_category : 'N/A'} | ${comment} | ${fb.status || ''}`;
+                doc.text(feedbackLine, 20, yPos);
+                yPos += 5;
+            });
+            
+            // Save the PDF
+            doc.save(`LitPathAI_FeedbackReport_${new Date().toISOString().slice(0, 10)}.pdf`);
+            showToast('Feedback report exported to PDF successfully!', 'success');
+        }).catch(err => {
+            console.error("Feedback PDF export failed:", err);
+            showToast('Failed to generate PDF export. Please try again.', 'error');
+        });
     };
 
     // ---------- RENDER ----------
@@ -1803,6 +2012,8 @@ const AdminDashboard = () => {
                                                 <span className="font-medium">{selectedFeedback.age || '—'}</span>
                                                 <span className="text-gray-600">Region:</span>
                                                 <span className="font-medium">{selectedFeedback.region || '—'}</span>
+                                                <span className="text-gray-600">User Category:</span>
+                                                <span className="font-medium">{selectedFeedback.category || '—'}</span>
                                             </div>
                                         </div>
 
@@ -1907,7 +2118,7 @@ const AdminDashboard = () => {
                                                 </select>
                                             ) : (
                                                 <span className="px-3 py-2 inline-flex text-sm leading-5 font-semibold rounded-full bg-blue-50 text-blue-700 border border-blue-100">
-                                                    {selectedFeedback.admin_category || selectedFeedback.category || 'General'}
+                                                    {selectedFeedback.admin_category || selectedFeedback.category || 'Irrelevant'}
                                                 </span>
                                             )}
                                         </div>
@@ -2193,30 +2404,61 @@ const AdminDashboard = () => {
                         <div className="h-full overflow-y-auto pr-1">
                             <div className="max-w-[1600px] mx-auto w-full flex flex-col gap-2">
 
+                    {/* ===== MATERIAL RATINGS TAB ===== */}
+                    {activeTab === 'ratings' && (
+                        <div className="h-full overflow-y-auto pr-1">
+                            <div className="max-w-[1600px] mx-auto w-full">
+
+                                {/* Header with export and filters */}
+                                <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+                                    <h2 className="text-xl font-bold text-gray-800">Material Ratings</h2>
+                                    <div className="flex gap-2">
+                                        {/* Export Button */}
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={handleRatingsExportCSV}
+                                                className="flex items-center space-x-2 px-3 py-1.5 border border-[#1E74BC] rounded-md bg-white text-[#1E74BC] hover:bg-blue-50 text-xs font-bold transition-colors shadow-sm"
+                                                title="Export ratings data to CSV"
+                                            >
+                                                <Download size={14} />
+                                                <span>Export CSV</span>
+                                            </button>
+                                            <button
+                                                onClick={handleRatingsExportPDF}
+                                                className="flex items-center space-x-2 px-3 py-1.5 border border-red-600 rounded-md bg-white text-red-600 hover:bg-red-50 text-xs font-bold transition-colors shadow-sm"
+                                                title="Export ratings data to PDF"
+                                            >
+                                                <Download size={14} />
+                                                <span>Export PDF</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 {/* ===== HEADER + DATE FILTER ===== */}
                                 <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
                                     <h2 className="text-xl font-bold text-gray-800">Thesis & Dissertation Usage</h2>
                                     <div className="flex gap-2">
 
-                                        {/* EXPORT CSV BUTTON */}
-                                        <button
-                                            onClick={handleExportCSV}
-                                            className="flex items-center space-x-2 px-3 py-1.5 border border-[#1E74BC] rounded-md bg-white text-[#1E74BC] hover:bg-blue-50 text-xs font-bold transition-colors shadow-sm"
-                                            title="Export current data to CSV"
-                                        >
-                                            <Download size={14} />
-                                            <span>Export CSV</span>
-                                        </button>
-
-                                        {/* EXPORT PDF BUTTON */}
-                                        <button
-                                            onClick={handleExportPDF}
-                                            className="flex items-center space-x-2 px-3 py-1.5 border border-[#1E74BC] rounded-md bg-white text-[#1E74BC] hover:bg-blue-50 text-xs font-bold transition-colors shadow-sm"
-                                            title="Export current data to PDF"
-                                        >
-                                            <Download size={14} />
-                                            <span>Export PDF</span>
-                                        </button>
+                                        {/* EXPORT BUTTON */}
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={handleExportCSV}
+                                                className="flex items-center space-x-2 px-3 py-1.5 border border-[#1E74BC] rounded-md bg-white text-[#1E74BC] hover:bg-blue-50 text-xs font-bold transition-colors shadow-sm"
+                                                title="Export current data to CSV"
+                                            >
+                                                <Download size={14} />
+                                                <span>Export CSV</span>
+                                            </button>
+                                            <button
+                                                onClick={handleExportPDF}
+                                                className="flex items-center space-x-2 px-3 py-1.5 border border-red-600 rounded-md bg-white text-red-600 hover:bg-red-50 text-xs font-bold transition-colors shadow-sm"
+                                                title="Export current data to PDF"
+                                            >
+                                                <Download size={14} />
+                                                <span>Export PDF</span>
+                                            </button>
+                                        </div>
 
                                         {/* Date Filter Dropdown */}
                                         <div className="relative" ref={overviewDateDropdownRef}>
@@ -3364,7 +3606,7 @@ const AdminDashboard = () => {
                                         <tr>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Date</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Rating</th>
-                                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Client Type</th>
+                                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">User Category</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Region</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Feedback Type</th>
                                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Comment</th>
@@ -3373,7 +3615,7 @@ const AdminDashboard = () => {
                                     </thead>
                                     <tbody className="bg-white divide-y divide-gray-200">
                                         {feedbacks.length === 0 ? (
-                                            <tr><td colSpan="8" className="px-6 py-10 text-center text-gray-500 text-sm">No feedback records found.</td></tr>
+                                            <tr><td colSpan="7" className="px-6 py-10 text-center text-gray-500 text-sm">No feedback records found.</td></tr>
                                         ) : (
                                             (() => {
                                                 const filtered = feedbacks
@@ -3383,7 +3625,7 @@ const AdminDashboard = () => {
                                                 if (filtered.length === 0) {
                                                     return (
                                                         <tr>
-                                                            <td colSpan="8" className="px-6 py-10 text-center text-gray-500 text-sm">
+                                                            <td colSpan="7" className="px-6 py-10 text-center text-gray-500 text-sm">
                                                                 No records match your filter.
                                                             </td>
                                                         </tr>
@@ -3409,14 +3651,14 @@ const AdminDashboard = () => {
                                                         </td>
                                                         <td className="px-6 py-4 whitespace-nowrap">
                                                             <span className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded text-xs border border-blue-100 font-medium">
-                                                                {fb.client_type || '—'}
+                                                                {fb.category || '—'}
                                                             </span>
                                                         </td>
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                                                             {fb.region || '—'}
                                                         </td>
-                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                                                            {fb.category || '—'}
+                                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">   {/* NEW */}
+                                                            {fb.admin_category || '—'}
                                                         </td>
                                                         <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
                                                             {fb.message_comment || <span className="text-gray-400 italic">No comment</span>}
@@ -4117,7 +4359,7 @@ const AdminDashboard = () => {
 
                                                                             {/* X-Axis Label */}
                                                                             <div className="absolute -bottom-7 text-[9px] text-gray-500 font-bold uppercase whitespace-nowrap text-center">
-                                                                                {p.displayLabel}
+                                                                                {t.label}
                                                                             </div>
                                                                         </div>
                                                                     );
@@ -4126,7 +4368,7 @@ const AdminDashboard = () => {
                                                         </div>
                                                     </div>
                                                     <div className="h-8 w-full"></div> {/* spacer for x‑axis labels */}
-                                                </>
+                                                </> {/* Added missing closing fragment */}
                                             );
                                         })()}
                                     </div>
@@ -4141,202 +4383,202 @@ const AdminDashboard = () => {
             {showAccountSettings && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
                     <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-fadeIn">
-                    {/* Header */}
-                    <div className="bg-gradient-to-r from-[#1E74BC] to-[#155a8f] text-white p-4">
-                        <div className="flex justify-between items-center">
-                        <h2 className="text-xl font-bold flex items-center gap-2">
-                            <Settings size={24} />
-                            Account Settings
-                        </h2>
-                        <button
-                            type="button"
-                            title="Close account settings"
-                            onClick={() => setShowAccountSettings(false)}
-                            className="text-white hover:text-gray-200 transition-colors"
-                        >
-                            <X size={24} />
-                        </button>
+                        {/* Header */}
+                        <div className="bg-gradient-to-r from-[#1E74BC] to-[#155a8f] text-white p-4">
+                            <div className="flex justify-between items-center">
+                                <h2 className="text-xl font-bold flex items-center gap-2">
+                                    <Settings size={24} />
+                                    Account Settings
+                                </h2>
+                                <button
+                                    type="button"
+                                    title="Close account settings"
+                                    onClick={() => setShowAccountSettings(false)}
+                                    className="text-white hover:text-gray-200 transition-colors"
+                                >
+                                    <X size={24} />
+                                </button>
+                            </div>
                         </div>
-                    </div>
 
-                    {/* Tabs */}
-                    <div className="flex border-b border-gray-200">
-                        <button
-                        onClick={() => setSettingsTab('profile')}
-                        className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 ${
-                            settingsTab === 'profile'
-                            ? 'text-[#1E74BC] border-b-2 border-[#1E74BC] bg-blue-50'
-                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                        }`}
-                        >
-                        <User size={16} />
-                        Edit Profile
-                        </button>
-                        <button
-                        onClick={() => setSettingsTab('password')}
-                        className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 ${
-                            settingsTab === 'password'
-                            ? 'text-[#1E74BC] border-b-2 border-[#1E74BC] bg-blue-50'
-                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                        }`}
-                        >
-                        <Key size={16} />
-                        Change Password
-                        </button>
-                    </div>
-
-                    {/* Content */}
-                    <div className="p-6">
-                        {settingsTab === 'profile' && (
-                        <form onSubmit={handleProfileSubmit} className="space-y-4">
-                            <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Full Name
-                            </label>
-                            <input
-                                type="text"
-                                value={editFullName}
-                                onChange={(e) => setEditFullName(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-black focus:outline-none"
-                                required
-                            />
-                            </div>
-                            <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Username
-                            </label>
-                            <input
-                                type="text"
-                                value={editUsername}
-                                onChange={(e) => setEditUsername(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-black focus:outline-none"
-                                required
-                            />
-                            </div>
+                        {/* Tabs */}
+                        <div className="flex border-b border-gray-200">
                             <button
-                            type="submit"
-                            disabled={settingsLoading}
-                            className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                onClick={() => setSettingsTab('profile')}
+                                className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 ${
+                                    settingsTab === 'profile'
+                                    ? 'text-[#1E74BC] border-b-2 border-[#1E74BC] bg-blue-50'
+                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                                }`}
                             >
-                            {settingsLoading ? (
-                                <>
-                                <RefreshCw size={16} className="animate-spin" />
-                                Saving...
-                                </>
-                            ) : (
-                                <>
                                 <User size={16} />
-                                Save Changes
-                                </>
-                            )}
+                                Edit Profile
                             </button>
-                        </form>
-                        )}
-
-                        {settingsTab === 'password' && (
-                        <form onSubmit={handlePasswordSubmit} className="space-y-4">
-                            {/* Current Password */}
-                            <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Current Password
-                            </label>
-                            <div className="relative">
-                                <input
-                                type={showCurrentPassword ? 'text' : 'password'}
-                                value={currentPassword}
-                                onChange={(e) => setCurrentPassword(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-black focus:outline-none pr-10"
-                                required
-                                />
-                                <button
-                                type="button"
-                                onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                >
-                                {showCurrentPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                </button>
-                            </div>
-                            </div>
-
-                            {/* New Password */}
-                            <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                New Password
-                            </label>
-                            <div className="relative">
-                                <input
-                                type={showNewPassword ? 'text' : 'password'}
-                                value={newPassword}
-                                onChange={(e) => setNewPassword(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-black focus:outline-none pr-10"
-                                required
-                                minLength={8}
-                                />
-                                <button
-                                type="button"
-                                onClick={() => setShowNewPassword(!showNewPassword)}
-                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                >
-                                {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                </button>
-                            </div>
-                            </div>
-
-                            {/* Confirm New Password */}
-                            <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Confirm New Password
-                            </label>
-                            <div className="relative">
-                                <input
-                                type={showConfirmPassword ? 'text' : 'password'}
-                                value={confirmPassword}
-                                onChange={(e) => setConfirmPassword(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-black focus:outline-none pr-10"
-                                required
-                                minLength={8}
-                                />
-                                <button
-                                type="button"
-                                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                >
-                                {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                </button>
-                            </div>
-                            </div>
-
-                            {/* Password hint */}
-                            <p className="text-xs text-gray-500 mt-1">
-                            Password must be at least 8 characters long
-                            </p>
-
                             <button
-                            type="submit"
-                            disabled={settingsLoading}
-                            className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                onClick={() => setSettingsTab('password')}
+                                className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 ${
+                                    settingsTab === 'password'
+                                    ? 'text-[#1E74BC] border-b-2 border-[#1E74BC] bg-blue-50'
+                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                                }`}
                             >
-                            {settingsLoading ? (
-                                <>
-                                <RefreshCw size={16} className="animate-spin" />
-                                Updating...
-                                </>
-                            ) : (
-                                <>
                                 <Key size={16} />
                                 Change Password
-                                </>
-                            )}
                             </button>
-                        </form>
-                        )}
-                    </div>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-6">
+                            {settingsTab === 'profile' ? (
+                                <form onSubmit={handleUpdateProfile} className="space-y-4">
+                                    {/* Full Name */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            Full Name
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={editFullName}
+                                            onChange={(e) => setEditFullName(e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-black focus:outline-none"
+                                            required
+                                        />
+                                    </div>
+
+                                    {/* Username */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            Username
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={editUsername}
+                                            onChange={(e) => setEditUsername(e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-black focus:outline-none"
+                                            required
+                                        />
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        disabled={settingsLoading}
+                                        className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {settingsLoading ? (
+                                            <>
+                                                <RefreshCw size={16} className="animate-spin inline-block mr-2" />
+                                                Updating...
+                                            </>
+                                        ) : (
+                                            'Update Profile'
+                                        )}
+                                    </button>
+                                </form>
+                            ) : (
+                                <form onSubmit={handleChangePassword} className="space-y-4">
+                                    {/* Current Password */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            Current Password
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                type={showCurrentPassword ? 'text' : 'password'}
+                                                value={currentPassword}
+                                                onChange={(e) => setCurrentPassword(e.target.value)}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-black focus:outline-none pr-10"
+                                                required
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                            >
+                                                {showCurrentPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* New Password */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            New Password
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                type={showNewPassword ? 'text' : 'password'}
+                                                value={newPassword}
+                                                onChange={(e) => setNewPassword(e.target.value)}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-black focus:outline-none pr-10"
+                                                required
+                                                minLength={8}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowNewPassword(!showNewPassword)}
+                                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                            >
+                                                {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Confirm New Password */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            Confirm New Password
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                type={showConfirmPassword ? 'text' : 'password'}
+                                                value={confirmPassword}
+                                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-black focus:outline-none pr-10"
+                                                required
+                                                minLength={8}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                            >
+                                                {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Password hint */}
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Password must be at least 8 characters long
+                                    </p>
+
+                                    <button
+                                        type="submit"
+                                        disabled={settingsLoading}
+                                        className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                    >
+                                        {settingsLoading ? (
+                                            <>
+                                                <RefreshCw size={16} className="animate-spin" />
+                                                Updating...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Key size={16} />
+                                                Change Password
+                                            </>
+                                        )}
+                                    </button>
+                                </form>
+                            )}
+                        </div>
                     </div>
                 </div>
-                )}
-            </div>
+            )}
         </>
     );
 };
+
+export default AdminDashboard;
 
 export default AdminDashboard;

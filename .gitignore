@@ -20,9 +20,12 @@ media/
 staticfiles/
 
 # Environment variables
-backend/.env
-.env.local
 *.env
+*.env.*
+.env.*
+backend/.env
+frontend/.env
+.env.local
 
 # ChromaDB and RAG data (re-indexed from txt files on deploy)
 RAG/chromadb_data/
