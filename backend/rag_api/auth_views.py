@@ -329,7 +329,7 @@ def auth_register_view(request):
             'message': captcha_error
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    if not email or not password or not username or not school_level or not school_name or not client_type or not sex or not age or not region or not category:
+    if not email or not password or not username or not school_level or not school_name or not client_type or not sex or not age or not region:
         return Response({
             'success': False,
             'message': 'Email, password, username, school profile, and CSM profile fields are required'
@@ -358,7 +358,7 @@ def auth_register_view(request):
         return Response({'success': False, 'message': 'Invalid age range selected'}, status=status.HTTP_400_BAD_REQUEST)
     if not _is_valid_choice(region, ALLOWED_REGION):
         return Response({'success': False, 'message': 'Invalid region selected'}, status=status.HTTP_400_BAD_REQUEST)
-    if not _is_valid_choice(category, ALLOWED_CATEGORY):
+    if category and not _is_valid_choice(category, ALLOWED_CATEGORY):
         return Response({'success': False, 'message': 'Invalid user category selected'}, status=status.HTTP_400_BAD_REQUEST)
     
     try:

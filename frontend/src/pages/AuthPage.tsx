@@ -60,9 +60,13 @@ const AuthPage = () => {
     ];
 
     const clientTypeChoices = [
-        { value: 'Citizen', label: 'Citizen' },
-        { value: 'Business', label: 'Business' },
-        { value: 'Government', label: 'Government (Employee/Agency)' }
+        { value: 'Student', label: 'Student' },
+        { value: 'DOST Employee', label: 'DOST Employee' },
+        { value: 'Other Government Employee', label: 'Other Government Employee' },
+        { value: 'Librarian/Library Staff', label: 'Librarian/Library Staff' },
+        { value: 'Teaching Personnel', label: 'Teaching Personnel' },
+        { value: 'Administrative Personnel', label: 'Administrative Personnel' },
+        { value: 'Researcher', label: 'Researcher' }
     ];
 
     const sexChoices = [
@@ -107,16 +111,6 @@ const AuthPage = () => {
         { value: 'N/A', label: '[N/A] Not Applicable (Overseas)' }
     ];
 
-    const categoryChoices = [
-        { value: 'Student', label: 'Student' },
-        { value: 'DOST Employee', label: 'DOST Employee' },
-        { value: 'Other Government Employee', label: 'Other Government Employee' },
-        { value: 'Librarian/Library Staff', label: 'Librarian/Library Staff' },
-        { value: 'Teaching Personnel', label: 'Teaching Personnel' },
-        { value: 'Administrative Personnel', label: 'Administrative Personnel' },
-        { value: 'Researcher', label: 'Researcher' }
-    ];
-
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -129,7 +123,6 @@ const AuthPage = () => {
     const [signupSex, setSignupSex] = useState('');
     const [signupAge, setSignupAge] = useState('');
     const [signupRegion, setSignupRegion] = useState('');
-    const [signupCategory, setSignupCategory] = useState('');
     const [signupPassword, setSignupPassword] = useState('');
     const [signupConfirmPassword, setSignupConfirmPassword] = useState('');
     const [showSignupPassword, setShowSignupPassword] = useState(false);
@@ -200,7 +193,6 @@ const AuthPage = () => {
                 sex: signupSex,
                 age: signupAge,
                 region: signupRegion,
-                category: signupCategory,
                 terms_accepted: signupTermsAccepted,
                 terms_version: 'v2026-04-01'
             });
@@ -601,25 +593,6 @@ const AuthPage = () => {
                                     >
                                         <option value="" disabled>Select region</option>
                                         {regionChoices.map(choice => (
-                                            <option key={choice.value} value={choice.value}>{choice.label}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label htmlFor="signupCategory" className="block text-sm font-medium text-gray-700 mb-1">
-                                        User Category
-                                    </label>
-                                    <select
-                                        id="signupCategory"
-                                        value={signupCategory}
-                                        onChange={(e) => setSignupCategory(e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        required
-                                        disabled={isLoading}
-                                    >
-                                        <option value="" disabled>Select user category</option>
-                                        {categoryChoices.map(choice => (
                                             <option key={choice.value} value={choice.value}>{choice.label}</option>
                                         ))}
                                     </select>

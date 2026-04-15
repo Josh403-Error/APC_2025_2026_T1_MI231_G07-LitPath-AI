@@ -39,10 +39,10 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
             ...prev,
             user_id: userId || prev.user_id,
             client_type: prev.client_type || user.client_type || '',
+            category: prev.category || user.category || '',
             sex: prev.sex || user.sex || '',
             age: prev.age || user.age || '',
-            region: prev.region || user.region || '',
-            category: prev.category || user.category || ''
+            region: prev.region || user.region || ''
         }));
     }, [user, userId]);
 
@@ -51,9 +51,13 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
     const [submitStatus, setSubmitStatus] = useState(null); // 'success', 'error', or null
 
     const clientTypeChoices = [
-        { value: 'Citizen', label: 'Citizen' },
-        { value: 'Business', label: 'Business' },
-        { value: 'Government', label: 'Government (Employee/Agency)' }
+        { value: 'Student', label: 'Student' },
+        { value: 'DOST Employee', label: 'DOST Employee' },
+        { value: 'Other Government Employee', label: 'Other Government Employee' },
+        { value: 'Librarian/Library Staff', label: 'Librarian/Library Staff' },
+        { value: 'Teaching Personnel', label: 'Teaching Personnel' },
+        { value: 'Administrative Personnel', label: 'Administrative Personnel' },
+        { value: 'Researcher', label: 'Researcher' }
     ];
 
     const sexChoices = [
@@ -98,16 +102,6 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
         { value: 'N/A', label: '[N/A] Not Applicable (Overseas)' }
     ];
 
-    const categoryChoices = [
-        { value: 'Student', label: 'Student' },
-        { value: 'DOST Employee', label: 'DOST Employee' },
-        { value: 'Other Government Employee', label: 'Other Government Employee' },
-        { value: 'Librarian/Library Staff', label: 'Librarian/Library Staff' },
-        { value: 'Teaching Personnel', label: 'Teaching Personnel' },
-        { value: 'Administrative Personnel', label: 'Administrative Personnel' },
-        { value: 'Researcher', label: 'Researcher' }
-    ];
-
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
         setFormData(prev => ({
@@ -149,9 +143,6 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
         }
         if (!formData.region) {
             newErrors.region = 'Region is required';
-        }
-        if (!formData.category) {
-            newErrors.category = 'Category is required';
         }
         if (!formData.research_interests || !formData.research_interests.trim()) {
             newErrors.research_interests = 'Research Interests/Topics is required';
@@ -430,37 +421,6 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
                                 </div>
                                 {errors.region && (
                                     <p className="text-red-500 text-sm">{errors.region}</p>
-                                )}
-                            </div>
-
-                            {/* Category */}
-                            <div className="mb-4 md:col-span-2">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    3. Category / Kategorya <span className="text-red-500">*</span>
-                                </label>
-                                <div className="relative">
-                                    <select
-                                        name="category"
-                                        aria-label="Category"
-                                        value={formData.category}
-                                        onChange={handleChange}
-                                        className="w-full appearance-none border border-gray-300 rounded-md p-2 pr-10 focus:ring-blue-500 focus:border-blue-500"
-                                    >
-                                        <option value="" disabled>Select Category</option>
-                                        {categoryChoices.map(choice => (
-                                            <option key={choice.value} value={choice.value}>
-                                                {choice.label}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
-                                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                                        </svg>
-                                    </div>
-                                </div>
-                                {errors.category && (
-                                    <p className="text-red-500 text-sm">{errors.category}</p>
                                 )}
                             </div>
                         </div>

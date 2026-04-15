@@ -351,11 +351,15 @@ class CSMFeedback(models.Model):
     This stores the detailed survey form and Admin Triage data.
     """
 
-    # Client Type choices
+    # Client Type choices (unified with Category)
     CLIENT_TYPE_CHOICES = [
-        ('Citizen', 'Citizen'),
-        ('Business', 'Business'),
-        ('Government', 'Government (Employee/Agency)'),
+        ('Student', 'Student'),
+        ('DOST Employee', 'DOST Employee'),
+        ('Other Government Employee', 'Other Government Employee'),
+        ('Librarian/Library Staff', 'Librarian/Library Staff'),
+        ('Teaching Personnel', 'Teaching Personnel'),
+        ('Administrative Personnel', 'Administrative Personnel'),
+        ('Researcher', 'Researcher'),
     ]
     
     # Sex choices
@@ -436,7 +440,7 @@ class CSMFeedback(models.Model):
     sex = models.CharField(max_length=50, choices=SEX_CHOICES)
     age = models.CharField(max_length=50, choices=AGE_CHOICES)
     region = models.CharField(max_length=50, choices=REGION_CHOICES)
-    category = models.CharField(max_length=100, choices=CATEGORY_CHOICES)
+    category = models.CharField(max_length=100, choices=CATEGORY_CHOICES, blank=True, null=True)
     
     # III. Feedback & Evaluation
     litpath_rating = models.IntegerField(choices=RATING_CHOICES, blank=True, null=True)
