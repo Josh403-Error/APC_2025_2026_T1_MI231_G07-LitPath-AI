@@ -771,6 +771,7 @@ class RAGService:
             rewritten_question = retrieval_question
 
         broad_listing_query = self._is_broad_listing_query(question)
+        strict_specific_query = not (broad_listing_query or more_results_query)
 
         # Step 2: Use rewritten query directly (no expansion)
         print(f"[RAG-DEBUG] Request ID {request_id}: Embedding query.")
@@ -945,6 +946,32 @@ class RAGService:
             print(f"[RAG] Exception during LLM index selection: {e}\n{traceback.format_exc()}")
             selected_chunks = []
 
+        # For specific/non-listing questions, keep only stronger semantic matches.
+        if strict_specific_query and selected_chunks:
+            strict_distance_threshold = min(distance_threshold, 1.1)
+            selected_chunks = [c for c in selected_chunks if c.get("score", 99.0) < strict_distance_threshold]
+
+            # Additional lexical guardrail: standalone queries should share key terms with sources.
+            query_terms = re.findall(r"[a-zA-Z][a-zA-Z0-9-]{3,}", (rewritten_question or "").lower())
+            lexical_stop_terms = {
+                "what", "which", "where", "when", "how", "about", "into", "from",
+                "thesis", "theses", "paper", "papers", "document", "documents",
+                "study", "studies", "research", "information", "define", "definition",
+                "explain", "describe", "overview"
+            }
+            informative_terms = [t for t in query_terms if t not in lexical_stop_terms]
+
+            if informative_terms:
+                def has_term_overlap(chunk_obj):
+                    meta = chunk_obj.get("meta", {})
+                    title = str(meta.get("title", "")).lower()
+                    subjects = str(meta.get("subjects", "")).lower()
+                    snippet = str(chunk_obj.get("chunk", ""))[:700].lower()
+                    haystack = f"{title} {subjects} {snippet}"
+                    return any(term in haystack for term in informative_terms)
+
+                selected_chunks = [c for c in selected_chunks if has_term_overlap(c)]
+
         # Only fallback to top-by-distance if there was an error (not when LLM returns [])
         if not selected_chunks:
             if selected_indices == []:
@@ -972,8 +999,9 @@ class RAGService:
             return None
 
         # Exact-fill behavior: ensure we reach the requested unique-document count when possible.
+        # IMPORTANT: only apply for broad listing / more-results intents.
         ranked_chunks_for_docs = list(selected_chunks)
-        if ranked_chunks_for_docs and requested_result_count > 0:
+        if ranked_chunks_for_docs and requested_result_count > 0 and (broad_listing_query or more_results_query):
             used_doc_keys = set()
             for chunk_obj in ranked_chunks_for_docs:
                 key = get_doc_key(chunk_obj)
