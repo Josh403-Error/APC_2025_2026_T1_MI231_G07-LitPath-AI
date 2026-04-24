@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import AdminUser
+from .password_validation import validate_password_strength
 
 class AdminLoginSerializer(serializers.Serializer):
     """Serializer for admin login"""
@@ -20,6 +21,12 @@ class AdminCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = AdminUser
         fields = ['email', 'password', 'full_name', 'is_active']
+
+    def validate_password(self, value):
+        is_valid_password, password_error = validate_password_strength(value)
+        if not is_valid_password:
+            raise serializers.ValidationError(password_error)
+        return value
     
     def create(self, validated_data):
         password = validated_data.pop('password')

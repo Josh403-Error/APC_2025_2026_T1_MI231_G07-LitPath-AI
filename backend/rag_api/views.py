@@ -7,6 +7,7 @@ from .rag_service import RAGService
 from .serializers import CSMFeedbackSerializer
 from .models import CSMFeedback, CitationCopy, Material, MaterialView, ResearchHistory
 from .models_password_reset import PasswordResetToken
+from .password_validation import validate_password_strength
 import secrets
 from django.db.models import Count, Avg, Q, Sum
 from django.db.models import Max
@@ -1293,7 +1294,7 @@ def request_password_reset(request):
     user = UserAccount.objects.filter(email=email).first()
     if user:
         reset_token = secrets.token_urlsafe(32)
-        expiry = timezone.now() + timezone.timedelta(hours=1)
+        expiry = timezone.now() + timezone.timedelta(minutes=15)
         try:
             PasswordResetToken.objects.create(
                 user=user,
@@ -1304,11 +1305,18 @@ def request_password_reset(request):
         except Exception as e:
             print(f"[DEBUG] Error creating PasswordResetToken: {e}")
         reset_link = f"http://localhost:5173/reset-password/{reset_token}"
+        email_body = (
+            "We received a password reset request for your account. "
+            "To reset your password, just click the link below:\n\n"
+            f"{reset_link}\n\n"
+            "This link will expire after 15 minutes so be sure to reset your password soon.\n\n"
+            "If you did not make this request, you can ignore this email."
+        )
         # Send email with reset link
         try:
             send_mail(
-                'Password Reset',
-                f'Click to reset your password: {reset_link}',
+                '[LitPath AI] Password reset',
+                email_body,
                 settings.DEFAULT_FROM_EMAIL,
                 [email],
             )
@@ -1333,6 +1341,10 @@ def reset_password(request):
         return Response({"error": "Invalid or used token."}, status=status.HTTP_400_BAD_REQUEST)
     if prt.expiry < timezone.now():
         return Response({"error": "Token expired."}, status=status.HTTP_400_BAD_REQUEST)
+
+    is_valid_password, password_error = validate_password_strength(new_password)
+    if not is_valid_password:
+        return Response({"error": password_error}, status=status.HTTP_400_BAD_REQUEST)
 
     user = prt.user
     user.set_password(new_password)

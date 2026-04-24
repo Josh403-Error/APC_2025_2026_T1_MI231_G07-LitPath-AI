@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import dostLogo from "../assets/images/dost-logo.png";
 import { API_BASE_URL } from '../services/api';
+import { getPasswordRequirementChecks, validatePasswordStrength } from '../lib/passwordValidation';
 
 const ResetPassword = () => {
   const { token } = useParams();
@@ -11,13 +12,15 @@ const ResetPassword = () => {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const passwordChecks = getPasswordRequirementChecks(password);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setMessage('');
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters.');
+    const passwordValidationError = validatePasswordStrength(password);
+    if (passwordValidationError) {
+      setError(passwordValidationError);
       return;
     }
     if (password !== confirmPassword) {
@@ -36,7 +39,7 @@ const ResetPassword = () => {
         setMessage('Password reset successful! You can now log in.');
         setTimeout(() => navigate('/'), 2000);
       } else {
-        setError(data.message || 'Failed to reset password.');
+        setError(data.message || data.error || 'Failed to reset password.');
       }
     } catch (err) {
       setError('Server error. Please try again.');
@@ -80,6 +83,16 @@ const ResetPassword = () => {
                 minLength={8}
                 placeholder="Re-enter new password"
               />
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <p className="text-xs font-semibold text-gray-700 mb-1">Password requirements:</p>
+              <ul className="list-disc list-inside text-xs space-y-1">
+                {passwordChecks.map((requirement) => (
+                  <li key={requirement.label} className={requirement.isMet ? 'text-green-600' : 'text-red-500'}>
+                    {requirement.label}
+                  </li>
+                ))}
+              </ul>
             </div>
             <button
               type="submit"

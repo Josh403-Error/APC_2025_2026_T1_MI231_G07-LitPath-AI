@@ -5,6 +5,7 @@ import { BookOpen, User, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import dostLogo from "../assets/images/dost-logo.png";
 import dostBg from "../assets/images/dost.png";
 import { API_BASE_URL } from '../services/api';
+import { getPasswordRequirementChecks, validatePasswordStrength } from '../lib/passwordValidation';
 
 type AuthMode = 'welcome' | 'login' | 'signup' | 'forgot';
 
@@ -131,6 +132,15 @@ const AuthPage = () => {
     const [error, setError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const isStudentClient = signupClientType === 'Student';
+    const signupPasswordChecks = getPasswordRequirementChecks(signupPassword);
+
+    useEffect(() => {
+        if (!isStudentClient) {
+            setSignupSchoolLevel('');
+            setSignupSchoolName('');
+        }
+    }, [isStudentClient]);
 
     const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -169,13 +179,19 @@ const AuthPage = () => {
             return;
         }
 
-        if (signupPassword.length < 8) {
-            setError('Password must be at least 8 characters long.');
+        const passwordValidationError = validatePasswordStrength(signupPassword);
+        if (passwordValidationError) {
+            setError(passwordValidationError);
             return;
         }
 
         if (!signupTermsAccepted) {
             setError('Please accept the Terms and Conditions to continue.');
+            return;
+        }
+
+        if (isStudentClient && (!signupSchoolLevel || !signupSchoolName.trim())) {
+            setError('School level and school name are required for students.');
             return;
         }
 
@@ -187,8 +203,8 @@ const AuthPage = () => {
                 password: signupPassword,
                 username: signupUsername,
                 full_name: signupFullName,
-                school_level: signupSchoolLevel,
-                school_name: signupSchoolName,
+                school_level: isStudentClient ? signupSchoolLevel : '',
+                school_name: isStudentClient ? signupSchoolName : '',
                 client_type: signupClientType,
                 sex: signupSex,
                 age: signupAge,
@@ -273,7 +289,7 @@ const AuthPage = () => {
 
             {/* Main Content */}
             <div className="flex justify-center items-center flex-1 py-10 px-4 relative z-10">
-                <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-xl">
+                <div className={`w-full ${mode === 'signup' ? 'max-w-6xl' : 'max-w-md'} bg-white p-6 sm:p-8 rounded-xl shadow-xl transition-all duration-200`}>
                     
                     {/* Welcome Screen */}
                     {mode === 'welcome' && (
@@ -438,10 +454,11 @@ const AuthPage = () => {
                                 </div>
                             )}
 
-                            <form onSubmit={handleSignup} className="space-y-4">
+                            <form onSubmit={handleSignup} className="space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label htmlFor="signupFullName" className="block text-sm font-medium text-gray-700 mb-1">
-                                        Full Name
+                                        Full Name <span className="text-red-500">*</span>
                                     </label>
                                     <input
                                         type="text"
@@ -457,7 +474,7 @@ const AuthPage = () => {
 
                                 <div>
                                     <label htmlFor="signupUsername" className="block text-sm font-medium text-gray-700 mb-1">
-                                        Username
+                                        Username <span className="text-red-500">*</span>
                                     </label>
                                     <input
                                         type="text"
@@ -473,7 +490,7 @@ const AuthPage = () => {
 
                                 <div>
                                     <label htmlFor="signupEmail" className="block text-sm font-medium text-gray-700 mb-1">
-                                        Email
+                                        Email <span className="text-red-500">*</span>
                                     </label>
                                     <input
                                         type="email"
@@ -488,8 +505,29 @@ const AuthPage = () => {
                                 </div>
 
                                 <div>
+                                    <label htmlFor="signupClientType" className="block text-sm font-medium text-gray-700 mb-1">
+                                        Client Type <span className="text-red-500">*</span>
+                                    </label>
+                                    <select
+                                        id="signupClientType"
+                                        value={signupClientType}
+                                        onChange={(e) => setSignupClientType(e.target.value)}
+                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        required
+                                        disabled={isLoading}
+                                    >
+                                        <option value="" disabled>Select client type</option>
+                                        {clientTypeChoices.map(choice => (
+                                            <option key={choice.value} value={choice.value}>{choice.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {isStudentClient && (
+                                    <>
+                                <div>
                                     <label htmlFor="signupSchoolLevel" className="block text-sm font-medium text-gray-700 mb-1">
-                                        School Level
+                                        School Level <span className="text-red-500">*</span>
                                     </label>
                                     <select
                                         id="signupSchoolLevel"
@@ -508,7 +546,7 @@ const AuthPage = () => {
 
                                 <div>
                                     <label htmlFor="signupSchoolName" className="block text-sm font-medium text-gray-700 mb-1">
-                                        School Name
+                                        School Name <span className="text-red-500">*</span>
                                     </label>
                                     <input
                                         type="text"
@@ -521,29 +559,12 @@ const AuthPage = () => {
                                         disabled={isLoading}
                                     />
                                 </div>
-
-                                <div>
-                                    <label htmlFor="signupClientType" className="block text-sm font-medium text-gray-700 mb-1">
-                                        Client Type
-                                    </label>
-                                    <select
-                                        id="signupClientType"
-                                        value={signupClientType}
-                                        onChange={(e) => setSignupClientType(e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        required
-                                        disabled={isLoading}
-                                    >
-                                        <option value="" disabled>Select client type</option>
-                                        {clientTypeChoices.map(choice => (
-                                            <option key={choice.value} value={choice.value}>{choice.label}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                                    </>
+                                )}
 
                                 <div>
                                     <label htmlFor="signupSex" className="block text-sm font-medium text-gray-700 mb-1">
-                                        Sex
+                                        Sex <span className="text-red-500">*</span>
                                     </label>
                                     <select
                                         id="signupSex"
@@ -562,7 +583,7 @@ const AuthPage = () => {
 
                                 <div>
                                     <label htmlFor="signupAge" className="block text-sm font-medium text-gray-700 mb-1">
-                                        Age Range
+                                        Age Range <span className="text-red-500">*</span>
                                     </label>
                                     <select
                                         id="signupAge"
@@ -581,7 +602,7 @@ const AuthPage = () => {
 
                                 <div>
                                     <label htmlFor="signupRegion" className="block text-sm font-medium text-gray-700 mb-1">
-                                        Region
+                                        Region <span className="text-red-500">*</span>
                                     </label>
                                     <select
                                         id="signupRegion"
@@ -600,7 +621,7 @@ const AuthPage = () => {
 
                                 <div>
                                     <label htmlFor="signupPassword" className="block text-sm font-medium text-gray-700 mb-1">
-                                        Password
+                                        Password <span className="text-red-500">*</span>
                                     </label>
                                     <div className="relative">
                                         <input
@@ -625,7 +646,7 @@ const AuthPage = () => {
 
                                 <div>
                                     <label htmlFor="signupConfirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
-                                        Confirm Password
+                                        Confirm Password <span className="text-red-500">*</span>
                                     </label>
                                     <div className="relative">
                                         <input
@@ -648,6 +669,18 @@ const AuthPage = () => {
                                     </div>
                                 </div>
 
+                                <div className="md:col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                                    <p className="text-xs font-semibold text-gray-700 mb-1">Password requirements:</p>
+                                    <ul className="list-disc list-inside text-xs space-y-1">
+                                        {signupPasswordChecks.map((requirement) => (
+                                            <li key={requirement.label} className={requirement.isMet ? 'text-green-600' : 'text-red-500'}>
+                                                {requirement.label}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                                </div>
+
                                 <div className="flex items-start gap-2">
                                     <input
                                         id="signupTerms"
@@ -658,7 +691,7 @@ const AuthPage = () => {
                                         disabled={isLoading}
                                     />
                                     <label htmlFor="signupTerms" className="text-sm text-gray-700">
-                                        * I hereby acknowledge that I am fully informed of the foregoing and that I
+                                        <span className="text-red-500">*</span> I hereby acknowledge that I am fully informed of the foregoing and that I
                                         consent to the collection and processing of my Personal Data by DOST-STII. I
                                         agree to the{' '}
                                         <Link to="/terms-and-conditions" className="text-[#1E74BC] hover:underline font-medium" target="_blank" rel="noopener noreferrer">

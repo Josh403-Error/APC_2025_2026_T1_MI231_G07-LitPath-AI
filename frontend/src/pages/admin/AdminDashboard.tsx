@@ -14,6 +14,7 @@ import {
 import dostLogo from "../../assets/images/dost-logo.png";
 import { API_BASE_URL } from '../../services/api';
 import { formatNumber } from '../../lib/formatNumber';
+import { getPasswordRequirementChecks, validatePasswordStrength } from '../../lib/passwordValidation';
 
 const hideDefaultPasswordEyeStyles = `
   input[type="password"]::-webkit-credentials-auto-fill-button,
@@ -140,6 +141,7 @@ const AdminDashboard = () => {
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [settingsLoading, setSettingsLoading] = useState(false);
     const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+    const passwordChecks = getPasswordRequirementChecks(newPassword);
 
     // ---------- Year options for dropdowns ----------
     const currentYear = new Date().getFullYear();
@@ -703,8 +705,9 @@ const AdminDashboard = () => {
             showToast('New passwords do not match', 'error');
             return;
         }
-        if (newPassword.length < 8) {
-            showToast('Password must be at least 8 characters', 'error');
+        const passwordValidationError = validatePasswordStrength(newPassword);
+        if (passwordValidationError) {
+            showToast(passwordValidationError, 'error');
             return;
         }
         setSettingsLoading(true);
@@ -4307,9 +4310,16 @@ const AdminDashboard = () => {
                             </div>
 
                             {/* Password hint */}
-                            <p className="text-xs text-gray-500 mt-1">
-                            Password must be at least 8 characters long
-                            </p>
+                            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 mt-1">
+                                <p className="text-xs font-semibold text-gray-700 mb-1">Password requirements:</p>
+                                <ul className="list-disc list-inside text-xs space-y-1">
+                                    {passwordChecks.map((requirement) => (
+                                        <li key={requirement.label} className={requirement.isMet ? 'text-green-600' : 'text-red-500'}>
+                                            {requirement.label}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
 
                             <button
                             type="submit"

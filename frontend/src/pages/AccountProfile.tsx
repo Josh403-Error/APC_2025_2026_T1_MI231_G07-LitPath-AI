@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { RefreshCw, Save, User, KeyRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE_URL } from '../services/api';
+import { getPasswordRequirementChecks, validatePasswordStrength } from '../lib/passwordValidation';
 
 const AccountProfile = () => {
     const navigate = useNavigate();
@@ -27,6 +28,7 @@ const AccountProfile = () => {
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
+    const passwordChecks = getPasswordRequirementChecks(newPassword);
 
     useEffect(() => {
         if (!user) return;
@@ -61,6 +63,7 @@ const AccountProfile = () => {
     const schoolLevelChoices = [
         'Junior High School', 'Senior High School', 'Undergraduate', 'Graduate', 'Postgraduate'
     ];
+    const isStudentClient = formData.client_type === 'Student';
 
     const handleProfileSave = async () => {
         setLoading(true);
@@ -114,8 +117,9 @@ const AccountProfile = () => {
                     setLoading(false);
                     return;
                 }
-                if (newPassword.length < 8) {
-                    setError('Password must be at least 8 characters long.');
+                const passwordValidationError = validatePasswordStrength(newPassword);
+                if (passwordValidationError) {
+                    setError(passwordValidationError);
                     setLoading(false);
                     return;
                 }
@@ -185,36 +189,48 @@ const AccountProfile = () => {
                             />
                         </div>
                         <div>
-                            <label className="text-sm font-medium text-gray-700">School Level</label>
-                            <select
-                                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg"
-                                value={formData.school_level}
-                                onChange={(e) => setFormData(prev => ({ ...prev, school_level: e.target.value }))}
-                            >
-                                <option value="">Select school level</option>
-                                {schoolLevelChoices.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                            </select>
-                        </div>
-                        <div className="md:col-span-2">
-                            <label className="text-sm font-medium text-gray-700">School Name</label>
-                            <input
-                                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg"
-                                value={formData.school_name}
-                                onChange={(e) => setFormData(prev => ({ ...prev, school_name: e.target.value }))}
-                            />
-                        </div>
-
-                        <div>
                             <label className="text-sm font-medium text-gray-700">Client Type</label>
                             <select
                                 className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg"
                                 value={formData.client_type}
-                                onChange={(e) => setFormData(prev => ({ ...prev, client_type: e.target.value }))}
+                                onChange={(e) => {
+                                    const nextClientType = e.target.value;
+                                    setFormData(prev => ({
+                                        ...prev,
+                                        client_type: nextClientType,
+                                        school_level: nextClientType === 'Student' ? prev.school_level : '',
+                                        school_name: nextClientType === 'Student' ? prev.school_name : ''
+                                    }));
+                                }}
                             >
                                 <option value="">Select client type</option>
                                 {clientTypeChoices.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                             </select>
                         </div>
+
+                        {isStudentClient && (
+                            <>
+                                <div>
+                                    <label className="text-sm font-medium text-gray-700">School Level</label>
+                                    <select
+                                        className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg"
+                                        value={formData.school_level}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, school_level: e.target.value }))}
+                                    >
+                                        <option value="">Select school level</option>
+                                        {schoolLevelChoices.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                    </select>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="text-sm font-medium text-gray-700">School Name</label>
+                                    <input
+                                        className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg"
+                                        value={formData.school_name}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, school_name: e.target.value }))}
+                                    />
+                                </div>
+                            </>
+                        )}
                         <div>
                             <label className="text-sm font-medium text-gray-700">Sex</label>
                             <select
@@ -254,6 +270,16 @@ const AccountProfile = () => {
                 <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mt-6">
                     <h2 className="text-xl font-semibold text-gray-900 mb-4">Security</h2>
                     <p className="text-xs text-gray-500 mb-4">Leave blank if you do not want to change password.</p>
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 mb-4">
+                        <p className="text-xs font-semibold text-gray-700 mb-1">Password requirements:</p>
+                        <ul className="list-disc list-inside text-xs space-y-1">
+                            {passwordChecks.map((requirement) => (
+                                <li key={requirement.label} className={requirement.isMet ? 'text-green-600' : 'text-red-500'}>
+                                    {requirement.label}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                             <label className="text-sm font-medium text-gray-700">Current Password</label>

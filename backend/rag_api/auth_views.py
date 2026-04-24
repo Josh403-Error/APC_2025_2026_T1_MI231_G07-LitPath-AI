@@ -125,6 +125,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.utils import timezone
 from .models import UserAccount, Session, UserRole, CSMFeedback
+from .password_validation import validate_password_strength
 
 
 CURRENT_TERMS_VERSION = os.getenv('TERMS_VERSION', 'v2026-04-01')
@@ -329,10 +330,10 @@ def auth_register_view(request):
             'message': captcha_error
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    if not email or not password or not username or not school_level or not school_name or not client_type or not sex or not age or not region:
+    if not email or not password or not username or not client_type or not sex or not age or not region:
         return Response({
             'success': False,
-            'message': 'Email, password, username, school profile, and CSM profile fields are required'
+            'message': 'Email, password, username, client type, and CSM profile fields are required'
         }, status=status.HTTP_400_BAD_REQUEST)
 
     if not terms_accepted:
@@ -341,17 +342,23 @@ def auth_register_view(request):
             'message': 'You must accept the Terms and Conditions to sign up'
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    # Validate password length
-    if len(password) < 8:
+    is_valid_password, password_error = validate_password_strength(password)
+    if not is_valid_password:
         return Response({
             'success': False,
-            'message': 'Password must be at least 8 characters long'
+            'message': password_error
         }, status=status.HTTP_400_BAD_REQUEST)
 
-    if not _is_valid_choice(school_level, ALLOWED_SCHOOL_LEVELS):
-        return Response({'success': False, 'message': 'Invalid school level selected'}, status=status.HTTP_400_BAD_REQUEST)
     if not _is_valid_choice(client_type, ALLOWED_CLIENT_TYPES):
         return Response({'success': False, 'message': 'Invalid client type selected'}, status=status.HTTP_400_BAD_REQUEST)
+    if client_type == 'Student':
+        if not school_level or not school_name:
+            return Response({'success': False, 'message': 'School level and school name are required for students'}, status=status.HTTP_400_BAD_REQUEST)
+        if not _is_valid_choice(school_level, ALLOWED_SCHOOL_LEVELS):
+            return Response({'success': False, 'message': 'Invalid school level selected'}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        school_level = ''
+        school_name = ''
     if not _is_valid_choice(sex, ALLOWED_SEX):
         return Response({'success': False, 'message': 'Invalid sex selected'}, status=status.HTTP_400_BAD_REQUEST)
     if not _is_valid_choice(age, ALLOWED_AGE):
@@ -691,11 +698,11 @@ def auth_change_password_view(request):
             'message': 'User ID, current password, and new password are required'
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    # Validate new password length
-    if len(new_password) < 8:
+    is_valid_password, password_error = validate_password_strength(new_password)
+    if not is_valid_password:
         return Response({
             'success': False,
-            'message': 'New password must be at least 8 characters long'
+            'message': password_error
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
@@ -756,8 +763,9 @@ def auth_reset_password_view(request):
             break
     if not user:
         return Response({'success': False, 'message': 'Invalid or expired token'}, status=status.HTTP_400_BAD_REQUEST)
-    if len(password) < 8:
-        return Response({'success': False, 'message': 'Password must be at least 8 characters long'}, status=status.HTTP_400_BAD_REQUEST)
+    is_valid_password, password_error = validate_password_strength(password)
+    if not is_valid_password:
+        return Response({'success': False, 'message': password_error}, status=status.HTTP_400_BAD_REQUEST)
     user.set_password(password)
     user.save()
     # Remove token after use
