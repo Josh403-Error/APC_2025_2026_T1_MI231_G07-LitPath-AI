@@ -259,7 +259,7 @@ const AuthPage = () => {
                     backgroundSize: 'cover', 
                     backgroundPosition: 'center', 
                     backgroundRepeat: 'no-repeat',
-                    filter: 'blur(10px)',
+                    filter: 'blur(6px)',
                     height: '100%',
                     width: '100%',
                 }}
