@@ -153,7 +153,7 @@ const AuthPage = () => {
             
             if (result.success) {
                 // Check role and redirect accordingly
-                if (result.user.role === 'admin' || result.user.role === 'staff') {
+                if (result.user && (result.user.role === 'admin' || result.user.role === 'staff')) {
                     navigate('/admin/dashboard');
                 } else {
                     navigate('/search');
@@ -210,7 +210,8 @@ const AuthPage = () => {
                 age: signupAge,
                 region: signupRegion,
                 terms_accepted: signupTermsAccepted,
-                terms_version: 'v2026-04-01'
+                terms_version: 'v2026-04-01',
+                category: ''
             });
 
             if (result.success) {
@@ -258,7 +259,9 @@ const AuthPage = () => {
                     backgroundSize: 'cover', 
                     backgroundPosition: 'center', 
                     backgroundRepeat: 'no-repeat',
-                    filter: 'blur(10px)'
+                    filter: 'blur(10px)',
+                    height: '100%',
+                    width: '100%',
                 }}
             />
             {/* Header */}

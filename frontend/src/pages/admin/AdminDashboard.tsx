@@ -1373,7 +1373,7 @@ const AdminDashboard = () => {
     const handleExportPDF = async () => {
         try {
             // Dynamically import jsPDF
-            const jsPDF = await import('jspdf').then(module => module.default);
+            const { jsPDF } = await import('jspdf');
             const doc = new jsPDF();
             let yPos = 20;
             const pageWidth = doc.internal.pageSize.width;
