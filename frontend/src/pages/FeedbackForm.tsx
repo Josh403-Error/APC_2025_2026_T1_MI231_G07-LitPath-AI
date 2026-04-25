@@ -29,7 +29,10 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
         litpath_rating: null,
         research_interests: '',
         missing_content: '',
-        message_comment: ''
+        message_comment: '',
+        school_level: '',
+        school_name: '',
+        company: '',
     });
 
     useEffect(() => {
@@ -51,6 +54,7 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
     const [submitStatus, setSubmitStatus] = useState(null); // 'success', 'error', or null
 
     const clientTypeChoices = [
+        { value: 'Citizen', label: 'Citizen' },
         { value: 'Student', label: 'Student' },
         { value: 'DOST Employee', label: 'DOST Employee' },
         { value: 'Other Government Employee', label: 'Other Government Employee' },
@@ -109,10 +113,18 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
             ...prev,
             [name]: type === 'checkbox' ? checked : value
         }));
-        
         // Clear error when field is modified
         if (errors[name]) {
             setErrors(prev => ({ ...prev, [name]: null }));
+        }
+        // Reset conditional fields if client_type changes
+        if (name === 'client_type') {
+            setFormData(prev => ({
+                ...prev,
+                school_level: '',
+                school_name: '',
+                company: '',
+            }));
         }
     };
 
@@ -125,7 +137,6 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
 
     const validateForm = () => {
         const newErrors = {};
-        
         // Required fields check
         if (!formData.consent_given) {
             newErrors.consent_given = 'You must acknowledge the data privacy consent';
@@ -148,7 +159,20 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
         if (!formData.research_interests || !formData.research_interests.trim()) {
             newErrors.research_interests = 'Research Interests/Topics is required';
         }
-        
+        // Conditional fields
+        if (formData.client_type === 'Student') {
+            if (!formData.school_level) {
+                newErrors.school_level = 'School Level is required';
+            }
+            if (!formData.school_name) {
+                newErrors.school_name = 'School Name is required';
+            }
+        }
+        if (formData.client_type === 'Citizen') {
+            if (!formData.company) {
+                newErrors.company = 'Company or N/A is required';
+            }
+        }
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
@@ -314,6 +338,64 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
                                     <p className="text-red-500 text-sm">{errors.client_type}</p>
                                 )}
                             </div>
+
+                            {/* Conditional Fields for Student */}
+                            {formData.client_type === 'Student' && (
+                                <>
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            School Level <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            name="school_level"
+                                            value={formData.school_level}
+                                            onChange={handleChange}
+                                            className="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
+                                            placeholder="e.g. High School, College, Graduate"
+                                        />
+                                        {errors.school_level && (
+                                            <p className="text-red-500 text-sm">{errors.school_level}</p>
+                                        )}
+                                    </div>
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            School Name <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            name="school_name"
+                                            value={formData.school_name}
+                                            onChange={handleChange}
+                                            className="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
+                                            placeholder="Enter your school name"
+                                        />
+                                        {errors.school_name && (
+                                            <p className="text-red-500 text-sm">{errors.school_name}</p>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+
+                            {/* Conditional Fields for Citizen */}
+                            {formData.client_type === 'Citizen' && (
+                                <div className="mb-4">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Company or N/A <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="company"
+                                        value={formData.company}
+                                        onChange={handleChange}
+                                        className="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
+                                        placeholder="Enter company name or N/A"
+                                    />
+                                    {errors.company && (
+                                        <p className="text-red-500 text-sm">{errors.company}</p>
+                                    )}
+                                </div>
+                            )}
 
                             {/* Date */}
                             <div className="mb-4">

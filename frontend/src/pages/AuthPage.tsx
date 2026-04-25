@@ -61,6 +61,7 @@ const AuthPage = () => {
     ];
 
     const clientTypeChoices = [
+        { value: 'Citizen', label: 'Citizen' },
         { value: 'Student', label: 'Student' },
         { value: 'DOST Employee', label: 'DOST Employee' },
         { value: 'Other Government Employee', label: 'Other Government Employee' },
