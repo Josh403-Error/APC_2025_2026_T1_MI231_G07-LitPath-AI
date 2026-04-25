@@ -1,4 +1,4 @@
-// @ts-nocheck
+﻿// @ts-nocheck
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -98,6 +98,7 @@ const FeedbackForm = ({ embedded = false, onClose }: FeedbackFormProps) => {
         { value: 'R11', label: '[R11] Davao Region' },
         { value: 'R12', label: '[R12] SOCCSKSARGEN Region' },
         { value: 'R13', label: '[R13] Caraga Administrative Region' },
+        { value: 'R18', label: '[R18] Negros Island Region (NIR)' },
         { value: 'BARMM', label: '[BARMM] Bangsamoro Autonomous Region in Muslim Mindanao' },
         { value: 'N/A', label: '[N/A] Not Applicable (Overseas)' }
     ];
