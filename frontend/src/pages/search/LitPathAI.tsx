@@ -1988,7 +1988,7 @@ return (
                                 
                                 {/* Sources Section (before AI response) */}
                                 {result.sources && result.sources.length > 0 && (
-                                    <div className="mt-3 mb-4">
+                                    <div className="mt-3 mb-4 max-w-[85%]">
                                         <h3 className="text-sm font-semibold mb-2 flex items-center space-x-2 text-gray-800">
                                             <BookOpen size={16} className="text-[#1E74BC]" />
                                             <span>Sources</span>
@@ -2731,3 +2731,4 @@ function SidebarContent({
 }
 
 export default LitPathAI;
+
