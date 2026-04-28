@@ -4,17 +4,19 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import LitPathAI from './pages/search/LitPathAI';
 import AuthPage from './pages/AuthPage';
 import AdminDashboard from './pages/admin/AdminDashboard';
+import ITAdminDashboard from './pages/itAdmin/ITAdminDashboard';
 import FeedbackForm from './pages/FeedbackForm';
 import FeedbackDetail from './pages/admin/FeedbackDetail';
 import ResetPassword from './pages/ResetPassword';
 import TermsAndConditions from './pages/TermsAndConditions.tsx';
 import AccountProfile from './pages/AccountProfile';
+import { getDashboardPathForRole, ROLE_PATHS } from './lib/roleLabels';
 
 // ------------------------------------------------------------
 //  Protected Route
 // ------------------------------------------------------------
-const ProtectedRoute = ({ children, requireStaff = false }: { children: React.ReactNode; requireStaff?: boolean }) => {
-    const { user, loading, isStaff } = useAuth();
+const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: Array<'staff' | 'admin'> }) => {
+    const { user, loading } = useAuth();
 
     if (loading) {
         return (
@@ -31,7 +33,7 @@ const ProtectedRoute = ({ children, requireStaff = false }: { children: React.Re
         return <Navigate to="/" replace />;
     }
 
-    if (requireStaff && !isStaff()) {
+    if (allowedRoles && (!user || !allowedRoles.includes(user.role as 'staff' | 'admin'))) {
         return <Navigate to="/search" replace />;
     }
 
@@ -65,20 +67,31 @@ const AuthRoute = ({ children }: { children: React.ReactNode }) => {
         if (user.role === 'guest' && isLoginMode) {
             return children;
         }
-        if (user.role === 'admin' || user.role === 'staff') {
-            return <Navigate to="/admin/dashboard" replace />;
-        }
-        return <Navigate to="/search" replace />;
+        return <Navigate to={getDashboardPathForRole(user.role)} replace />;
     }
 
     return children;
+};
+
+const LegacyAdminDashboardRedirect = () => {
+    const { user, loading } = useAuth();
+
+    if (loading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-100">
+                <div className="text-center text-gray-600">Loading...</div>
+            </div>
+        );
+    }
+
+    return <Navigate to={getDashboardPathForRole(user?.role)} replace />;
 };
 
 // ------------------------------------------------------------
 //  Redirect from old /admin/feedback (list) to dashboard with state
 // ------------------------------------------------------------
 const RedirectToFeedbackTab = () => {
-    return <Navigate to="/admin/dashboard" replace state={{ activeTab: 'feedback' }} />;
+    return <Navigate to={ROLE_PATHS.STAFF_DASHBOARD} replace state={{ activeTab: 'feedback' }} />;
 };
 
 // ------------------------------------------------------------
@@ -96,14 +109,20 @@ const AppContent = () => {
             {/* Search page – requires auth (including guest) */}
             <Route path="/search" element={<ProtectedRoute><LitPathAI /></ProtectedRoute>} />
 
-            {/* Admin dashboard – main staff/admin hub */}
-            <Route path="/admin/dashboard" element={<ProtectedRoute requireStaff={true}><AdminDashboard /></ProtectedRoute>} />
+            {/* Staff dashboard – Library Administrator hub */}
+            <Route path="/library-admin/dashboard" element={<ProtectedRoute allowedRoles={['staff']}><AdminDashboard /></ProtectedRoute>} />
+
+            {/* IT admin dashboard */}
+            <Route path="/it-admin/dashboard" element={<ProtectedRoute allowedRoles={['admin']}><ITAdminDashboard /></ProtectedRoute>} />
+
+            {/* Backward-compatible redirect from the old path */}
+            <Route path="/admin/dashboard" element={<ProtectedRoute><LegacyAdminDashboardRedirect /></ProtectedRoute>} />
 
             {/* Redirect old /admin/feedback (list) to dashboard with feedback tab active */}
-            <Route path="/admin/feedback" element={<ProtectedRoute requireStaff={true}><RedirectToFeedbackTab /></ProtectedRoute>} />
+            <Route path="/admin/feedback" element={<ProtectedRoute allowedRoles={['staff']}><RedirectToFeedbackTab /></ProtectedRoute>} />
 
             {/* ✅ DETAIL PAGE – still exists, back button returns to dashboard */}
-            <Route path="/admin/feedback/:id" element={<ProtectedRoute requireStaff={true}><FeedbackDetail /></ProtectedRoute>} />
+            <Route path="/admin/feedback/:id" element={<ProtectedRoute allowedRoles={['staff']}><FeedbackDetail /></ProtectedRoute>} />
 
             {/* CSM Feedback Form */}
             <Route path="/feedback-form" element={<ProtectedRoute><FeedbackForm /></ProtectedRoute>} />

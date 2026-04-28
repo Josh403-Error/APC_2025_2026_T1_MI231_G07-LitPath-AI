@@ -12,9 +12,10 @@ import {
     User, Key, RefreshCw, Download, Home
 } from "lucide-react";
 import dostLogo from "../../assets/images/dost-logo.png";
-import { API_BASE_URL } from '../../services/api';
+import { API_BASE_URL, apiHeaders } from '../../services/api';
 import { formatNumber } from '../../lib/formatNumber';
 import { getPasswordRequirementChecks, validatePasswordStrength } from '../../lib/passwordValidation';
+import { getRoleLabel, ROLE_PATHS } from '../../lib/roleLabels';
 
 const hideDefaultPasswordEyeStyles = `
   input[type="password"]::-webkit-credentials-auto-fill-button,
@@ -33,6 +34,7 @@ const AdminDashboard = () => {
     const location = useLocation();
     const [searchParams, setSearchParams] = useSearchParams();
     const { logout, user, changePassword, updateProfile } = useAuth();
+    const roleLabel = getRoleLabel(user?.role);
 
     // ---------- Tab State from URL ----------
     const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'overview');
@@ -265,7 +267,9 @@ const AdminDashboard = () => {
         const { from, to } = getDateRange();
         if (overviewDateFilterType === 'Custom range' && (!from || !to)) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/dashboard/kpi/?from=${from}&to=${to}`);
+            const res = await fetch(`${API_BASE_URL}/dashboard/kpi/?from=${from}&to=${to}`, {
+                headers: apiHeaders(true)
+            });
             if (res.ok) {
                 const data = await res.json();
                 setDashboardData(prev => ({ ...prev, kpi: data }));
@@ -277,7 +281,9 @@ const AdminDashboard = () => {
         const { from, to } = getDateRange();
         if (overviewDateFilterType === 'Custom range' && (!from || !to)) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/dashboard/trending-topics/?from=${from}&to=${to}`);
+            const res = await fetch(`${API_BASE_URL}/dashboard/trending-topics/?from=${from}&to=${to}`, {
+                headers: apiHeaders(true)
+            });
             if (res.ok) {
                 const data = await res.json();
                 setDashboardData(prev => ({ ...prev, trendingTopics: data }));
@@ -289,7 +295,9 @@ const AdminDashboard = () => {
         const { from, to } = getDateRange();
         if (overviewDateFilterType === 'Custom range' && (!from || !to)) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/dashboard/top-theses/?from=${from}&to=${to}&limit=8`);
+            const res = await fetch(`${API_BASE_URL}/dashboard/top-theses/?from=${from}&to=${to}&limit=8`, {
+                headers: apiHeaders(true)
+            });
             if (res.ok) {
                 const data = await res.json();
                 setDashboardData(prev => ({ ...prev, topTheses: data.materials || [] }));
@@ -301,7 +309,9 @@ const AdminDashboard = () => {
         const { from, to } = getDateRange();
         if (overviewDateFilterType === 'Custom range' && (!from || !to)) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/dashboard/usage-by-category/?from=${from}&to=${to}`);
+            const res = await fetch(`${API_BASE_URL}/dashboard/usage-by-category/?from=${from}&to=${to}`, {
+                headers: apiHeaders(true)
+            });
             if (res.ok) {
                 const data = await res.json();
                 setDashboardData(prev => ({ ...prev, usageByCategory: data }));
@@ -313,7 +323,9 @@ const AdminDashboard = () => {
         const { from, to } = getDateRange();
         if (overviewDateFilterType === 'Custom range' && (!from || !to)) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/dashboard/age-distribution/?from=${from}&to=${to}`);
+            const res = await fetch(`${API_BASE_URL}/dashboard/age-distribution/?from=${from}&to=${to}`, {
+                headers: apiHeaders(true)
+            });
             if (res.ok) {
                 const data = await res.json();
                 setDashboardData(prev => ({ ...prev, ageDistribution: data }));
@@ -325,7 +337,9 @@ const AdminDashboard = () => {
         const { from, to } = getDateRange();
         if (overviewDateFilterType === 'Custom range' && (!from || !to)) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/dashboard/failed-queries-count/?from=${from}&to=${to}`);
+            const res = await fetch(`${API_BASE_URL}/dashboard/failed-queries-count/?from=${from}&to=${to}`, {
+                headers: apiHeaders(true)
+            });
             if (res.ok) {
                 const data = await res.json();
                 setDashboardData(prev => ({ ...prev, failedQueriesCount: data.total }));
@@ -337,7 +351,9 @@ const AdminDashboard = () => {
         const { from, to } = getDateRange();
         if (overviewDateFilterType === 'Custom range' && (!from || !to)) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/dashboard/failed-queries-details/?from=${from}&to=${to}&limit=10`);
+            const res = await fetch(`${API_BASE_URL}/dashboard/failed-queries-details/?from=${from}&to=${to}&limit=10`, {
+                headers: apiHeaders(true)
+            });
             if (res.ok) {
                 const data = await res.json();
                 setDashboardData(prev => ({ ...prev, failedQueries: data.failed_queries || [] }));
@@ -349,7 +365,9 @@ const AdminDashboard = () => {
         const { from, to } = getDateRange();
         if (overviewDateFilterType === 'Custom range' && (!from || !to)) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/dashboard/citation-stats/?from=${from}&to=${to}`);
+            const res = await fetch(`${API_BASE_URL}/dashboard/citation-stats/?from=${from}&to=${to}`, {
+                headers: apiHeaders(true)
+            });
             if (res.ok) {
                 const data = await res.json();
                 setDashboardData(prev => ({ ...prev, citationStats: data }));
@@ -371,7 +389,9 @@ const AdminDashboard = () => {
         }
 
         try {
-            const res = await fetch(`${API_BASE_URL}${endpoint}?from=${from}&to=${to}`);
+            const res = await fetch(`${API_BASE_URL}${endpoint}?from=${from}&to=${to}`, {
+                headers: apiHeaders(true)
+            });
             if (res.ok) {
                 let data = await res.json();
 
@@ -450,7 +470,9 @@ const AdminDashboard = () => {
         }
 
         try {
-            const res = await fetch(`${API_BASE_URL}${endpoint}?from=${from}&to=${to}`);
+            const res = await fetch(`${API_BASE_URL}${endpoint}?from=${from}&to=${to}`, {
+                headers: apiHeaders(true)
+            });
             if (res.ok) {
                 let data = await res.json();
 
@@ -627,7 +649,9 @@ const AdminDashboard = () => {
     const fetchFeedback = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/csm-feedback/`);
+            const res = await fetch(`${API_BASE_URL}/csm-feedback/`, {
+                headers: apiHeaders(true)
+            });
             if (res.ok) {
                 const data = await res.json();
                 setFeedbacks(data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
@@ -639,7 +663,9 @@ const AdminDashboard = () => {
     const fetchMaterialRatings = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/feedback/`);
+            const res = await fetch(`${API_BASE_URL}/feedback/`, {
+                headers: apiHeaders(true)
+            });
             if (res.ok) {
                 const data = await res.json();
                 const ratings = data.filter(item => item.relevant !== null);
@@ -654,7 +680,9 @@ const AdminDashboard = () => {
 
     const fetchLeastAccessedMaterials = async () => {
         try {
-            const res = await fetch(`${API_BASE_URL}/dashboard/least-browsed/`);
+            const res = await fetch(`${API_BASE_URL}/dashboard/least-browsed/`, {
+                headers: apiHeaders(true)
+            });
             if (res.ok) {
                 const data = await res.json();
                 setLeastAccessedMaterials(data);
@@ -664,7 +692,9 @@ const AdminDashboard = () => {
 
     const fetchDormantCount = async () => {
         try {
-            const res = await fetch(`${API_BASE_URL}/dashboard/dormant-count/`);
+            const res = await fetch(`${API_BASE_URL}/dashboard/dormant-count/`, {
+                headers: apiHeaders(true)
+            });
             if (res.ok) {
                 const data = await res.json();
                 setDormantCount(data.count);
@@ -917,7 +947,7 @@ const AdminDashboard = () => {
         try {
             const response = await fetch(`${API_BASE_URL}/csm-feedback/${selectedFeedback.id}/`, {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
+                headers: apiHeaders(true),
                 body: JSON.stringify({
                     status: feedbackEditForm.status,
                     admin_category: feedbackEditForm.admin_category,
@@ -1605,11 +1635,8 @@ const AdminDashboard = () => {
             // 3. FETCH LEAST ACCESSED MATERIALS (dormant list)
             let allLeastAccessed = [];
             try {
-                const token = localStorage.getItem('token') || localStorage.getItem('access_token');
-                const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-
                 const response = await fetch(`${API_BASE_URL}/dashboard/least-browsed/?limit=1000`, {
-                    headers: headers
+                    headers: apiHeaders(true)
                 });
                 if (response.ok) {
                     allLeastAccessed = await response.json();
@@ -2106,13 +2133,13 @@ const AdminDashboard = () => {
                                         <p className="text-xs text-gray-500 truncate">{user?.email || 'admin@litpath.ai'}</p>
                                         <div className="flex items-center gap-2 mt-2">
                                             <ShieldCheck size={14} className="text-blue-600" />
-                                            <span className="text-xs font-medium text-gray-700">Admin</span>
+                                            <span className="text-xs font-medium text-gray-700">{roleLabel}</span>
                                         </div>
                                     </div>
                                     {/* New Home button */}
                                     <button
                                         onClick={() => {
-                                            navigate('/admin/dashboard');
+                                            navigate(ROLE_PATHS.STAFF_DASHBOARD);
                                             setShowUserMenu(false);
                                         }}
                                         className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"

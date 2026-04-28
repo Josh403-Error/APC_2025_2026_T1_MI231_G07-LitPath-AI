@@ -66,6 +66,7 @@ export interface AuthContextValue {
     isAuthenticated: () => boolean;
     hasRole: (role: string) => boolean;
     isStaff: () => boolean;
+    isAdmin: () => boolean;
     changePassword: (currentPassword: string, newPassword: string) => Promise<AuthResult>;
     deleteAccount: (password: string) => Promise<AuthResult>;
     USER_ROLES: typeof USER_ROLES;
@@ -414,6 +415,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return user?.role === USER_ROLES.STAFF || user?.role === USER_ROLES.ADMIN;
     }, [user]);
 
+    const isAdmin = useCallback(() => {
+        return user?.role === USER_ROLES.ADMIN;
+    }, [user]);
+
     // Change password
     const changePassword = async (currentPassword, newPassword) => {
         if (!user || isGuest) {
@@ -485,6 +490,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         isAuthenticated,
         hasRole,
         isStaff,
+        isAdmin,
         changePassword,
         deleteAccount,
         USER_ROLES

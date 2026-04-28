@@ -13,6 +13,7 @@ import CSMModal from '../../components/CSMModal';
 import CitationModal from './CitationModal';
 import { API_BASE_URL } from '../../services/api';
 import { formatSources } from '../../lib/formatSources';
+import { getDashboardPathForRole, getRoleLabel } from '../../lib/roleLabels';
 const LitPathAI = () => {
     // Auth context
     const { user, isGuest, logout, startNewChat: authStartNewChat, getUserId, isStaff } = useAuth();
@@ -1608,14 +1609,14 @@ return (
                                             user.role === 'staff' ? 'bg-blue-100 text-blue-700' :
                                             'bg-gray-100 text-gray-700'
                                         }`}>
-                                            {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+                                            {getRoleLabel(user.role)}
                                         </span>
                                     )}
                                 </div>
                                 
                                 {isStaff() && (
                                     <Link
-                                        to="/admin/dashboard"
+                                        to={getDashboardPathForRole(user?.role)}
                                         className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                                         onClick={() => setShowUserMenu(false)}
                                     >

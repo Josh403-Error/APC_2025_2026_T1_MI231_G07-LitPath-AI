@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, ChevronDown, ShieldCheck, Settings, LogOut, Star, Home } from 'lucide-react';
 import dostLogo from "../../assets/images/dost-logo.png";
-import { API_BASE_URL } from '../../services/api';
+import { API_BASE_URL, apiHeaders } from '../../services/api';
 
 const FeedbackDetail = () => {
     const { id } = useParams();
@@ -53,7 +53,9 @@ const FeedbackDetail = () => {
     useEffect(() => {
         const fetchDetail = async () => {
             try {
-                const response = await fetch(`${API_BASE_URL}/csm-feedback/${id}/`);
+                const response = await fetch(`${API_BASE_URL}/csm-feedback/${id}/`, {
+                    headers: apiHeaders(true)
+                });
                 if (!response.ok) throw new Error("Not found");
                 const data = await response.json();
                 setFeedback(data);
@@ -67,7 +69,7 @@ const FeedbackDetail = () => {
                 });
             } catch (error) {
                 console.error(error);
-                navigate('/admin/dashboard', { state: { activeTab: 'feedback' } });
+                navigate('/library-admin/dashboard', { state: { activeTab: 'feedback' } });
             } finally {
                 setLoading(false);
             }
@@ -104,7 +106,7 @@ const FeedbackDetail = () => {
         try {
             const response = await fetch(`${API_BASE_URL}/csm-feedback/${id}/`, {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
+                headers: apiHeaders(true),
                 body: JSON.stringify({
                     status: editForm.status,
                     admin_category: editForm.admin_category,
@@ -157,7 +159,7 @@ const FeedbackDetail = () => {
                     <div className="flex items-center gap-6">
                         <div className="flex items-center gap-2 bg-gray-800 px-3 py-1.5 rounded-full border border-gray-700 shadow-sm">
                             <ShieldCheck size={16} className="text-blue-400" />
-                            <span className="text-sm font-medium text-gray-200">Admin</span>
+                            <span className="text-sm font-medium text-gray-200">Library Administrator</span>
                         </div>
                         <div className="relative" ref={userMenuRef}>
                             <button
@@ -178,7 +180,7 @@ const FeedbackDetail = () => {
                                     {/* Home button */}
                                     <button
                                         onClick={() => {
-                                            navigate('/admin/dashboard');
+                                            navigate('/library-admin/dashboard');
                                             setShowUserMenu(false);
                                         }}
                                         className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
@@ -215,7 +217,7 @@ const FeedbackDetail = () => {
                     {/* Back button */}
                     <div className="mb-4 flex-none">
                         <button
-                            onClick={() => navigate('/admin/dashboard?tab=feedback')}
+                            onClick={() => navigate('/library-admin/dashboard?tab=feedback')}
                             className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg text-sm text-gray-700 font-medium transition-all shadow-sm hover:shadow focus:outline-none focus:ring-2 focus:ring-gray-400"
                         >
                             <ChevronLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" />

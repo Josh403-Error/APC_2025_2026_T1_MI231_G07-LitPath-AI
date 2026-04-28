@@ -6,6 +6,7 @@ import dostLogo from "../assets/images/dost-logo.png";
 import dostBg from "../assets/images/dost.png";
 import { API_BASE_URL } from '../services/api';
 import { getPasswordRequirementChecks, validatePasswordStrength } from '../lib/passwordValidation';
+import { getDashboardPathForRole } from '../lib/roleLabels';
 
 type AuthMode = 'welcome' | 'login' | 'signup' | 'forgot';
 
@@ -154,12 +155,7 @@ const AuthPage = () => {
             const result = await login(email, password);
             
             if (result.success) {
-                // Check role and redirect accordingly
-                if (result.user && (result.user.role === 'admin' || result.user.role === 'staff')) {
-                    navigate('/admin/dashboard');
-                } else {
-                    navigate('/search');
-                }
+                navigate(getDashboardPathForRole(result.user?.role));
             } else {
                 setError(result.error || 'Login failed');
             }
@@ -294,7 +290,7 @@ const AuthPage = () => {
 
             {/* Main Content */}
             <div className="flex justify-center items-center flex-1 py-10 px-4 relative z-10">
-                <div className={`w-full ${mode === 'signup' ? 'max-w-6xl' : 'max-w-md'} bg-white p-6 sm:p-8 rounded-xl shadow-xl transition-all duration-200`}>
+                <div className={`w-full ${mode === 'signup' ? 'max-w-4xl' : 'max-w-md'} bg-white p-6 sm:p-8 rounded-xl shadow-xl transition-all duration-200`}>
                     
                     {/* Welcome Screen */}
                     {mode === 'welcome' && (

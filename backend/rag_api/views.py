@@ -23,6 +23,7 @@ from django.core.mail import send_mail
 from django.conf import settings
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from .permissions import get_authenticated_user, require_staff_or_admin
 
 User = get_user_model()
 
@@ -726,6 +727,15 @@ def feedback_view(request):
     POST: Submit new feedback
     """
     if request.method == 'GET':
+        user, error_response = get_authenticated_user(request)
+        if error_response:
+            return error_response
+        if not user.is_staff_or_admin():
+            return Response(
+                {'success': False, 'message': 'You do not have permission to access this resource.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         # Optional: filter by user_id for user-specific feedback
         user_id = request.query_params.get('user_id')
         if user_id:
@@ -755,6 +765,7 @@ def feedback_view(request):
 
 # Manage feedback for system admin
 @api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
+@require_staff_or_admin
 def feedback_detail(request, pk):
     """
     GET: Retrieve single feedback
@@ -792,6 +803,7 @@ def feedback_detail(request, pk):
 
 # ============= CSM Feedback Views =============
 @api_view(['GET', 'POST'])
+@require_staff_or_admin
 def csm_feedback_view(request):
     """
     GET: List all CSM feedback (for admin analytics)
@@ -823,6 +835,7 @@ def csm_feedback_view(request):
 
 
 @api_view(['GET', 'DELETE', 'PATCH']) # Added PATCH here
+@require_staff_or_admin
 def csm_feedback_detail(request, pk):
     """
     GET: Retrieve single CSM feedback
@@ -1018,6 +1031,12 @@ def get_most_browsed(request):
             {"error": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['GET'])
+@require_staff_or_admin
+def dashboard_top_theses(request):
+    return get_most_browsed(getattr(request, '_request', request))
 
 
 @api_view(['GET'])
@@ -1422,6 +1441,7 @@ class RAGEvaluationView(APIView):
 
 # ============= Endpoint 1 – KPI (Total Theses, Total Searches, Utilisation, Avg Response Time, Failed Queries) =============
 @api_view(['GET'])
+@require_staff_or_admin
 def dashboard_kpi(request):
     from_date, to_date = parse_date_range(request.GET.get('from'), request.GET.get('to'))
 
@@ -1449,6 +1469,7 @@ def dashboard_kpi(request):
 
 # Failed Queries Count
 @api_view(['GET'])
+@require_staff_or_admin
 def dashboard_failed_queries_count(request):
     """
     GET /api/dashboard/failed-queries-count/
@@ -1465,6 +1486,7 @@ def dashboard_failed_queries_count(request):
 
 # Failed Queries Details
 @api_view(['GET'])
+@require_staff_or_admin
 def dashboard_failed_queries_details(request):
     """
     GET /api/dashboard/failed-queries-details/
@@ -1482,6 +1504,7 @@ def dashboard_failed_queries_details(request):
 
 # ============= Endpoint 2 – Trending Topics =============
 @api_view(['GET'])
+@require_staff_or_admin
 def dashboard_trending_topics(request):
     """
     GET /api/dashboard/trending-topics/
@@ -1558,6 +1581,7 @@ ALL_CATEGORIES = [
 ]
 
 @api_view(['GET'])
+@require_staff_or_admin
 def dashboard_usage_by_category(request):
     """GET /api/dashboard/usage-by-category/ – breakdown from CSMFeedback (all categories)."""
     from_date, to_date = parse_date_range(request.GET.get('from'), request.GET.get('to'))
@@ -1626,6 +1650,7 @@ def normalize_age(age_str):
     return age_str
 
 @api_view(['GET'])
+@require_staff_or_admin
 def dashboard_age_distribution(request):
     """
     GET /api/dashboard/age-distribution/
@@ -1668,6 +1693,7 @@ def dashboard_age_distribution(request):
 
 # Monthly Trends (Views per Month)
 @api_view(['GET'])
+@require_staff_or_admin
 def dashboard_monthly_trends(request):
     """
     GET /api/dashboard/monthly-trends/
@@ -1721,6 +1747,7 @@ def dashboard_monthly_trends(request):
 
 # Weekly Trends (Views per Week)
 @api_view(['GET'])
+@require_staff_or_admin
 def dashboard_weekly_trends(request):
     """
     GET /api/dashboard/weekly-trends/?from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -1775,6 +1802,7 @@ def dashboard_weekly_trends(request):
 
 # Daily Trends (Views per Day)
 @api_view(['GET'])
+@require_staff_or_admin
 def dashboard_daily_trends(request):
     """
     GET /api/dashboard/daily-trends/?from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -1840,6 +1868,7 @@ def track_citation_copy(request):
 
 # Dashboard Citation Stats
 @api_view(['GET'])
+@require_staff_or_admin
 def dashboard_citation_stats(request):
     """
     GET /api/dashboard/citation-stats/
@@ -1868,6 +1897,7 @@ def dashboard_citation_stats(request):
 
 # Dashboard Citation Monthly
 @api_view(['GET'])
+@require_staff_or_admin
 def dashboard_citation_monthly(request):
     """
     GET /api/dashboard/citation-monthly/
@@ -1912,6 +1942,7 @@ def dashboard_citation_monthly(request):
 
 # Dashboard Citation Weekly
 @api_view(['GET'])
+@require_staff_or_admin
 def dashboard_citation_weekly(request):
     """Returns citation counts grouped by week (Sunday to Saturday)."""
     from_date, to_date = parse_date_range(request.GET.get('from'), request.GET.get('to'))
@@ -1949,6 +1980,7 @@ def dashboard_citation_weekly(request):
 
 # Dashboard Citation Daily
 @api_view(['GET'])
+@require_staff_or_admin
 def dashboard_citation_daily(request):
     """Returns citation counts grouped by individual days."""
     from_date, to_date = parse_date_range(request.GET.get('from'), request.GET.get('to'))
@@ -1974,6 +2006,7 @@ def dashboard_citation_daily(request):
 
 # ============= Endpoint – Top 7 Search Queries =============
 @api_view(['GET'])
+@require_staff_or_admin
 def dashboard_top_search_queries(request):
     """
     GET /api/dashboard/top-search-queries/
@@ -2001,6 +2034,7 @@ def dashboard_top_search_queries(request):
 
 # ============= Material Ratings – Least Browsed Theses =============
 @api_view(['GET'])
+@require_staff_or_admin
 def dashboard_least_browsed(request):
     """
     GET /api/dashboard/least-browsed/
@@ -2045,6 +2079,7 @@ def dashboard_least_browsed(request):
 
 # ============= Material Ratings – Dormant Count =============
 @api_view(['GET'])
+@require_staff_or_admin
 def dashboard_dormant_count(request):
     with connection.cursor() as cursor:
         cursor.execute("""

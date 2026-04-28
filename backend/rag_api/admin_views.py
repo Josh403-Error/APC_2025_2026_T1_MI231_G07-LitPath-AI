@@ -4,6 +4,7 @@ from rest_framework import status
 from django.utils import timezone
 from .models import AdminUser
 from .admin_serializers import AdminLoginSerializer, AdminUserSerializer, AdminCreateSerializer
+from .permissions import require_admin_only
 
 @api_view(['POST'])
 def admin_login_view(request):
@@ -84,6 +85,7 @@ def admin_login_view(request):
 
 
 @api_view(['GET', 'POST'])
+@require_admin_only
 def admin_users_view(request):
     """
     GET /api/admin/users/ - List all admin users
@@ -123,6 +125,7 @@ def admin_users_view(request):
 
 
 @api_view(['DELETE'])
+@require_admin_only
 def admin_user_delete_view(request, admin_id):
     """
     DELETE /api/admin/users/<admin_id>/
