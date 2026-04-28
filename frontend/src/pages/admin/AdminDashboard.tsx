@@ -93,6 +93,14 @@ const AdminDashboard = () => {
     const [showExportDropdown, setShowExportDropdown] = useState(false);
     const exportDropdownRef = useRef(null);
 
+    // ---------- Feedback Export Dropdown ----------
+    const [showFeedbackExportDropdown, setShowFeedbackExportDropdown] = useState(false);
+    const feedbackExportDropdownRef = useRef(null);
+
+    // ---------- Ratings Export Dropdown ----------
+    const [showRatingsExportDropdown, setShowRatingsExportDropdown] = useState(false);
+    const ratingsExportDropdownRef = useRef(null);
+
     // ---------- Feedback Manager Pagination ----------
     const [currentFeedbackPage, setCurrentFeedbackPage] = useState(1);
     const feedbackItemsPerPage = 10;
@@ -630,6 +638,14 @@ const AdminDashboard = () => {
             if (exportDropdownRef.current && !exportDropdownRef.current.contains(event.target)) {
                 setShowExportDropdown(false);
             }
+            // Feedback Export Dropdown
+            if (feedbackExportDropdownRef.current && !feedbackExportDropdownRef.current.contains(event.target)) {
+                setShowFeedbackExportDropdown(false);
+            }
+            // Ratings Export Dropdown
+            if (ratingsExportDropdownRef.current && !ratingsExportDropdownRef.current.contains(event.target)) {
+                setShowRatingsExportDropdown(false);
+            }
             // Ratings Date Dropdown
             if (ratingsDateDropdownRef.current && !ratingsDateDropdownRef.current.contains(event.target)) {
                 const isInput = event.target.tagName === 'INPUT'; 
@@ -907,6 +923,108 @@ const AdminDashboard = () => {
             // --- EXCEPTION HANDLING E2: Export Generation Failure ---
             console.error("Feedback export failed:", error);
             showToast('Failed to generate export file. Please try again.', 'error');
+        }
+    };
+
+    // ---------- Feedback Manager Export Data to PDF ----------
+    const handleFeedbackExportPDF = async () => {
+        try {
+            const filteredFeedbacks = getFilteredFeedbacks();
+            if (filteredFeedbacks.length === 0) {
+                showToast('No data to export', 'error');
+                return;
+            }
+
+            const { jsPDF } = await import('jspdf');
+            const doc = new jsPDF();
+            let yPos = 20;
+            const pageWidth = doc.internal.pageSize.width;
+
+            // Determine filter description
+            let filterDescription = '';
+            if (feedbackDateFilterType === 'Year') {
+                filterDescription = `Year ${feedbackSelectedYear}`;
+            } else if (feedbackDateFilterType === 'Month') {
+                const monthName = new Date(feedbackSelectedMonthYear, feedbackSelectedMonth - 1)
+                    .toLocaleString('default', { month: 'long' });
+                filterDescription = `${monthName} ${feedbackSelectedMonthYear}`;
+            } else if (feedbackDateFilterType === 'Last 7 days') {
+                const to = new Date();
+                const from = new Date();
+                from.setDate(to.getDate() - 7);
+                filterDescription = `Last 7 days (${from.toLocaleDateString()} to ${to.toLocaleDateString()})`;
+            } else if (feedbackDateFilterType === 'Custom range' && feedbackCustomFrom && feedbackCustomTo) {
+                filterDescription = `${feedbackCustomFrom} to ${feedbackCustomTo}`;
+            } else {
+                filterDescription = 'All time';
+            }
+
+            showToast('Generating PDF report...', 'info');
+
+            // Title
+            doc.setFontSize(18);
+            doc.text("LITPATH AI - FEEDBACK REPORT", pageWidth / 2, yPos, { align: 'center' });
+            yPos += 10;
+
+            // Report header
+            doc.setFontSize(12);
+            doc.text(`Filter Period: ${filterDescription}`, 20, yPos);
+            yPos += 6;
+            doc.text(`Total Feedback Entries: ${filteredFeedbacks.length}`, 20, yPos);
+            yPos += 6;
+            doc.text(`Exported On: ${new Date().toLocaleString()}`, 20, yPos);
+            yPos += 12;
+
+            // Feedback List
+            doc.setFontSize(14);
+            doc.text("FEEDBACK ENTRIES", 20, yPos);
+            yPos += 8;
+            doc.setFontSize(10);
+
+            filteredFeedbacks.forEach((fb, index) => {
+                if (yPos > 250) {
+                    doc.addPage();
+                    yPos = 20;
+                }
+
+                const ratingText = fb.litpath_rating ? `${fb.litpath_rating} star${fb.litpath_rating > 1 ? 's' : ''}` : 'N/A';
+                const date = new Date(fb.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+                doc.text(`Entry ${index + 1}:`, 20, yPos);
+                yPos += 5;
+                doc.text(`Date: ${date}`, 25, yPos);
+                yPos += 5;
+                doc.text(`Rating: ${ratingText}`, 25, yPos);
+                yPos += 5;
+                doc.text(`Category: ${fb.client_type || 'N/A'}`, 25, yPos);
+                yPos += 5;
+                doc.text(`Region: ${fb.region || 'N/A'}`, 25, yPos);
+                yPos += 5;
+                doc.text(`Type: ${fb.admin_category && fb.admin_category.trim() !== '' ? fb.admin_category : 'N/A'}`, 25, yPos);
+                yPos += 5;
+                doc.text(`Status: ${fb.status || 'N/A'}`, 25, yPos);
+                yPos += 5;
+
+                const comment = fb.message_comment && fb.message_comment.trim() !== '' ? fb.message_comment : 'N/A';
+                const commentLines = doc.splitTextToSize(`Comment: ${comment}`, 160);
+                commentLines.forEach(line => {
+                    if (yPos > 250) {
+                        doc.addPage();
+                        yPos = 20;
+                    }
+                    doc.text(line, 25, yPos);
+                    yPos += 5;
+                });
+
+                yPos += 5;
+            });
+
+            // Save the PDF
+            doc.save(`LitPathAI_FeedbackReport_${new Date().toISOString().slice(0, 10)}.pdf`);
+            showToast('Feedback exported to PDF successfully!', 'success');
+        } catch (error) {
+            console.error("Feedback PDF export failed:", error);
+            showToast('Failed to generate PDF export. Please try again.', 'error');
         }
     };
 
@@ -1762,6 +1880,101 @@ const AdminDashboard = () => {
             // --- EXCEPTION HANDLING FOR E2: Export Generation Failure ---
             console.error("Export generation failed:", error);
             showToast('Failed to generate export file. Please try again.', 'error');
+        }
+    };
+
+    // ---------- Material Ratings Export Data to PDF ----------
+    const handleRatingsExportPDF = async () => {
+        try {
+            if (!filteredRatings || filteredRatings.length === 0) {
+                showToast('No ratings data to export', 'error');
+                return;
+            }
+
+            const { jsPDF } = await import('jspdf');
+            const doc = new jsPDF();
+            let yPos = 20;
+            const pageWidth = doc.internal.pageSize.width;
+
+            // Determine the date range based on the current filter
+            let filterDescription = '';
+            if (ratingsDateFilterType === 'Year') {
+                filterDescription = `Year ${ratingsSelectedYear}`;
+            } else if (ratingsDateFilterType === 'Month') {
+                const monthName = new Date(ratingsSelectedMonthYear, ratingsSelectedMonth - 1).toLocaleString('default', { month: 'long' });
+                filterDescription = `${monthName} ${ratingsSelectedMonthYear}`;
+            } else if (ratingsDateFilterType === 'Last 7 days') {
+                const to = new Date();
+                const from = new Date();
+                from.setDate(to.getDate() - 7);
+                filterDescription = `Last 7 days (${from.toLocaleDateString()} to ${to.toLocaleDateString()})`;
+            } else if (ratingsDateFilterType === 'Custom range' && ratingsCustomFrom && ratingsCustomTo) {
+                filterDescription = `${ratingsCustomFrom} to ${ratingsCustomTo}`;
+            } else {
+                filterDescription = 'All time';
+            }
+
+            showToast('Generating PDF report...', 'info');
+
+            // Title
+            doc.setFontSize(18);
+            doc.text("LITPATH AI - CONTENT QUALITY REPORT", pageWidth / 2, yPos, { align: 'center' });
+            yPos += 10;
+
+            // Report header
+            doc.setFontSize(12);
+            doc.text(`Filter Period: ${filterDescription}`, 20, yPos);
+            yPos += 6;
+            doc.text(`Total Ratings: ${filteredRatings.length}`, 20, yPos);
+            yPos += 6;
+            doc.text(`Exported On: ${new Date().toLocaleString()}`, 20, yPos);
+            yPos += 12;
+
+            // Ratings List
+            doc.setFontSize(14);
+            doc.text("RATINGS LOG", 20, yPos);
+            yPos += 8;
+            doc.setFontSize(10);
+
+            filteredRatings.forEach((r, index) => {
+                if (yPos > 250) {
+                    doc.addPage();
+                    yPos = 20;
+                }
+
+                const date = new Date(r.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+                const title = r.material_title || r.document_file || 'Unknown';
+                const rating = r.relevant === true ? 'Helpful' : 'Not Relevant';
+
+                doc.text(`Entry ${index + 1}:`, 20, yPos);
+                yPos += 5;
+                doc.text(`Date: ${date}`, 25, yPos);
+                yPos += 5;
+                doc.text(`Material: ${title.substring(0, 60)}${title.length > 60 ? '...' : ''}`, 25, yPos);
+                yPos += 5;
+                doc.text(`Rating: ${rating}`, 25, yPos);
+                yPos += 5;
+
+                const comment = r.message_comment && r.message_comment.trim() !== '' ? r.message_comment : '-';
+                const commentLines = doc.splitTextToSize(`Comment: ${comment}`, 160);
+                commentLines.forEach(line => {
+                    if (yPos > 250) {
+                        doc.addPage();
+                        yPos = 20;
+                    }
+                    doc.text(line, 25, yPos);
+                    yPos += 5;
+                });
+
+                yPos += 5;
+            });
+
+            // Save the PDF
+            doc.save(`LitPathAI_MaterialReport_${new Date().toISOString().slice(0, 10)}.pdf`);
+            showToast('Ratings exported to PDF successfully!', 'success');
+        } catch (error) {
+            console.error("Ratings PDF export failed:", error);
+            showToast('Failed to generate PDF export. Please try again.', 'error');
         }
     };
 
@@ -3182,15 +3395,41 @@ const AdminDashboard = () => {
                                 </div>
                                 {/* Row 2: Export and Filters */}
                                 <div className="flex gap-3 items-center justify-end">
-                                    {/* Export Button */}
-                                    <button
-                                        onClick={handleFeedbackExportCSV}
-                                        className="flex items-center space-x-2 px-3 py-1.5 border border-[#1E74BC] rounded-md bg-white text-[#1E74BC] hover:bg-blue-50 text-xs font-bold transition-colors shadow-sm"
-                                        title="Export filtered feedback to CSV"
-                                    >
-                                        <Download size={14} />
-                                        <span>Export Data</span>
-                                    </button>
+                                    {/* Export Dropdown Button */}
+                                    <div className="relative" ref={feedbackExportDropdownRef}>
+                                        <button
+                                            onClick={() => setShowFeedbackExportDropdown(!showFeedbackExportDropdown)}
+                                            className="flex items-center space-x-2 px-3 py-1.5 border border-[#1E74BC] rounded-md bg-white text-[#1E74BC] hover:bg-blue-50 text-xs font-bold transition-colors shadow-sm"
+                                            title="Export filtered feedback"
+                                        >
+                                            <Download size={14} />
+                                            <span>Export</span>
+                                            <ChevronDown size={14} />
+                                        </button>
+
+                                        {showFeedbackExportDropdown && (
+                                            <div className="absolute top-full right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-xl z-30 min-w-[180px]">
+                                                <button
+                                                    onClick={() => {
+                                                        handleFeedbackExportCSV();
+                                                        setShowFeedbackExportDropdown(false);
+                                                    }}
+                                                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 first:rounded-t-lg transition-colors"
+                                                >
+                                                    Export as CSV
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        handleFeedbackExportPDF();
+                                                        setShowFeedbackExportDropdown(false);
+                                                    }}
+                                                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 last:rounded-b-lg transition-colors"
+                                                >
+                                                    Export as PDF
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
 
                                     {/* Date Filter Dropdown */}
                                     <div className="relative" ref={feedbackDateDropdownRef}>
@@ -3568,15 +3807,41 @@ const AdminDashboard = () => {
                                 </div>
                                 {/* Row 2: Export and Filters */}
                                 <div className="flex gap-2 items-center justify-end">
-                                    {/* Export Button */}
-                                    <button
-                                        onClick={handleRatingsExportCSV}
-                                        className="flex items-center space-x-2 px-3 py-1.5 border border-[#1E74BC] rounded-md bg-white text-[#1E74BC] hover:bg-blue-50 text-xs font-bold transition-colors shadow-sm"
-                                        title="Export filtered ratings to CSV"
-                                    >
-                                        <Download size={14} />
-                                        <span>Export Data</span>
-                                    </button>
+                                    {/* Export Dropdown Button */}
+                                    <div className="relative" ref={ratingsExportDropdownRef}>
+                                        <button
+                                            onClick={() => setShowRatingsExportDropdown(!showRatingsExportDropdown)}
+                                            className="flex items-center space-x-2 px-3 py-1.5 border border-[#1E74BC] rounded-md bg-white text-[#1E74BC] hover:bg-blue-50 text-xs font-bold transition-colors shadow-sm"
+                                            title="Export filtered ratings"
+                                        >
+                                            <Download size={14} />
+                                            <span>Export</span>
+                                            <ChevronDown size={14} />
+                                        </button>
+
+                                        {showRatingsExportDropdown && (
+                                            <div className="absolute top-full right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-xl z-30 min-w-[180px]">
+                                                <button
+                                                    onClick={() => {
+                                                        handleRatingsExportCSV();
+                                                        setShowRatingsExportDropdown(false);
+                                                    }}
+                                                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 first:rounded-t-lg transition-colors"
+                                                >
+                                                    Export as CSV
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        handleRatingsExportPDF();
+                                                        setShowRatingsExportDropdown(false);
+                                                    }}
+                                                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 last:rounded-b-lg transition-colors"
+                                                >
+                                                    Export as PDF
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
                                 
                                     {/* Date Filter Dropdown */}
                                     <div className="relative" ref={ratingsDateDropdownRef}>
