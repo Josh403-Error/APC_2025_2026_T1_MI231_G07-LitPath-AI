@@ -1720,7 +1720,7 @@ const AdminDashboard = () => {
     // ---------- Material Ratings Export Data to CSV ----------
     const handleRatingsExportCSV = async () => {
         try {
-            // 1. Basic check
+            // 1. Basic check - ensure there's filtered data to export
             if (!filteredRatings || filteredRatings.length === 0) {
                 showToast('No ratings data to export', 'error');
                 return;
@@ -1730,11 +1730,15 @@ const AdminDashboard = () => {
 
             // 2. Determine the date range based on the current filter
             let fromDateStr = '', toDateStr = '', filterDescription = '';
+            let dateFilterApplied = false;
+            
             if (ratingsDateFilterType === 'Year') {
+                dateFilterApplied = true;
                 fromDateStr = `${ratingsSelectedYear}-01-01`;
                 toDateStr = `${ratingsSelectedYear}-12-31`;
                 filterDescription = `Year ${ratingsSelectedYear}`;
             } else if (ratingsDateFilterType === 'Month') {
+                dateFilterApplied = true;
                 const year = ratingsSelectedMonthYear;
                 const month = String(ratingsSelectedMonth).padStart(2, '0');
                 const daysInMonth = new Date(year, ratingsSelectedMonth, 0).getDate();
@@ -1743,6 +1747,7 @@ const AdminDashboard = () => {
                 const monthName = new Date(year, ratingsSelectedMonth - 1).toLocaleString('default', { month: 'long' });
                 filterDescription = `${monthName} ${year}`;
             } else if (ratingsDateFilterType === 'Last 7 days') {
+                dateFilterApplied = true;
                 const to = new Date();
                 const from = new Date();
                 from.setDate(to.getDate() - 7);
@@ -1750,6 +1755,7 @@ const AdminDashboard = () => {
                 toDateStr = to.toISOString().slice(0, 10);
                 filterDescription = `Last 7 days (${from.toLocaleDateString()} to ${to.toLocaleDateString()})`;
             } else if (ratingsDateFilterType === 'Custom range' && ratingsCustomFrom && ratingsCustomTo) {
+                dateFilterApplied = true;
                 fromDateStr = ratingsCustomFrom;
                 toDateStr = ratingsCustomTo;
                 filterDescription = `${fromDateStr} to ${toDateStr}`;
@@ -1758,7 +1764,7 @@ const AdminDashboard = () => {
                 filterDescription = 'All time';
             }
 
-            // 3. FETCH LEAST ACCESSED MATERIALS (dormant list)
+            // 3. FETCH LEAST ACCESSED MATERIALS and apply the same date filter
             let allLeastAccessed = [];
             try {
                 const response = await fetch(`${API_BASE_URL}/dashboard/least-browsed/?limit=1000`, {
@@ -1766,6 +1772,19 @@ const AdminDashboard = () => {
                 });
                 if (response.ok) {
                     allLeastAccessed = await response.json();
+                    
+                    // IMPORTANT: Filter least accessed materials by the same date range applied to ratings
+                    if (dateFilterApplied && fromDateStr && toDateStr) {
+                        const fromDate = new Date(fromDateStr);
+                        const toDate = new Date(toDateStr);
+                        toDate.setHours(23, 59, 59, 999);
+                        
+                        allLeastAccessed = allLeastAccessed.filter(m => {
+                            if (!m.last_accessed) return false; // exclude materials with no access date
+                            const lastAccessDate = new Date(m.last_accessed);
+                            return lastAccessDate >= fromDate && lastAccessDate <= toDate;
+                        });
+                    }
                 } else {
                     console.warn('Failed to fetch least accessed materials, status:', response.status);
                 }
@@ -1800,7 +1819,7 @@ const AdminDashboard = () => {
             rows.push(["Total Ratings (filtered)", filteredRatings.length]);
 
             const dormantCount = allLeastAccessed.filter(m => m.view_count === 0).length;
-            rows.push(["Dormant Materials (0 Views)", dormantCount]);
+            rows.push(["Dormant Materials in Period (0 Views)", dormantCount]);
             rows.push([]); // empty line
 
             // --- SECTION 2: RATINGS LOG ---
@@ -1827,8 +1846,8 @@ const AdminDashboard = () => {
             rows.push([]);
             rows.push([]);
 
-            // --- SECTION 3: LEAST ACCESSED MATERIALS (ARCHIVE CANDIDATES) ---
-            rows.push(["--- PART 2: LEAST ACCESSED MATERIALS (ARCHIVE CANDIDATES) ---"]);
+            // --- SECTION 3: LEAST ACCESSED MATERIALS (ARCHIVE CANDIDATES) - FILTERED BY SAME DATE RANGE ---
+            rows.push(["--- PART 2: LEAST ACCESSED MATERIALS (ARCHIVE CANDIDATES) - FILTERED BY SAME PERIOD ---"]);
 
             if (allLeastAccessed && allLeastAccessed.length > 0) {
                 rows.push(["Material Title", "Year", "Last Accessed", "Total Views", "Status"]);
@@ -1836,13 +1855,13 @@ const AdminDashboard = () => {
                 allLeastAccessed.forEach(m => {
                     const lastAccess = m.last_accessed ? new Date(m.last_accessed).toLocaleDateString() : 'Never';
                     const views = m.view_count || 0;
-                    // New Logic (Smart Labeling)
+                    // Smart Labeling based on engagement
                     let status = "Active"; // Default for high views
                     if (views === 0) {
                         status = "DORMANT (0 Views)";
-                    } else if (views < 20) { // Set your own threshold for "Low"
+                    } else if (views < 20) {
                         status = "Low Engagement";
-                    } else if (views < 100) { // Set your own threshold for "Moderate"
+                    } else if (views < 100) {
                         status = "Moderate Engagement";
                     } else {
                         status = "High Engagement";
@@ -1857,7 +1876,7 @@ const AdminDashboard = () => {
                     ]);
                 });
             } else {
-                rows.push(["Note: No least accessed data found. (Check API connection)"]);
+                rows.push(["Note: No least accessed materials found in the selected period."]);
             }
 
             // Convert rows to CSV string
@@ -1877,13 +1896,11 @@ const AdminDashboard = () => {
             showToast('Report exported successfully!', 'success');
 
         } catch (error) {
-            // --- EXCEPTION HANDLING FOR E2: Export Generation Failure ---
             console.error("Export generation failed:", error);
             showToast('Failed to generate export file. Please try again.', 'error');
         }
     };
 
-    // ---------- Material Ratings Export Data to PDF ----------
     const handleRatingsExportPDF = async () => {
         try {
             if (!filteredRatings || filteredRatings.length === 0) {
@@ -1898,23 +1915,67 @@ const AdminDashboard = () => {
 
             // Determine the date range based on the current filter
             let filterDescription = '';
+            let fromDateStr = '', toDateStr = '';
+            let dateFilterApplied = false;
+            
             if (ratingsDateFilterType === 'Year') {
+                dateFilterApplied = true;
                 filterDescription = `Year ${ratingsSelectedYear}`;
+                fromDateStr = `${ratingsSelectedYear}-01-01`;
+                toDateStr = `${ratingsSelectedYear}-12-31`;
             } else if (ratingsDateFilterType === 'Month') {
+                dateFilterApplied = true;
                 const monthName = new Date(ratingsSelectedMonthYear, ratingsSelectedMonth - 1).toLocaleString('default', { month: 'long' });
                 filterDescription = `${monthName} ${ratingsSelectedMonthYear}`;
+                const year = ratingsSelectedMonthYear;
+                const month = String(ratingsSelectedMonth).padStart(2, '0');
+                const daysInMonth = new Date(year, ratingsSelectedMonth, 0).getDate();
+                fromDateStr = `${year}-${month}-01`;
+                toDateStr = `${year}-${month}-${daysInMonth}`;
             } else if (ratingsDateFilterType === 'Last 7 days') {
+                dateFilterApplied = true;
                 const to = new Date();
                 const from = new Date();
                 from.setDate(to.getDate() - 7);
                 filterDescription = `Last 7 days (${from.toLocaleDateString()} to ${to.toLocaleDateString()})`;
+                fromDateStr = from.toISOString().slice(0, 10);
+                toDateStr = to.toISOString().slice(0, 10);
             } else if (ratingsDateFilterType === 'Custom range' && ratingsCustomFrom && ratingsCustomTo) {
+                dateFilterApplied = true;
                 filterDescription = `${ratingsCustomFrom} to ${ratingsCustomTo}`;
+                fromDateStr = ratingsCustomFrom;
+                toDateStr = ratingsCustomTo;
             } else {
                 filterDescription = 'All time';
             }
 
             showToast('Generating PDF report...', 'info');
+
+            // Fetch least accessed materials and apply the same date filter
+            let allLeastAccessed = [];
+            try {
+                const response = await fetch(`${API_BASE_URL}/dashboard/least-browsed/?limit=1000`, {
+                    headers: apiHeaders(true)
+                });
+                if (response.ok) {
+                    allLeastAccessed = await response.json();
+                    
+                    // IMPORTANT: Filter least accessed materials by the same date range applied to ratings
+                    if (dateFilterApplied && fromDateStr && toDateStr) {
+                        const fromDate = new Date(fromDateStr);
+                        const toDate = new Date(toDateStr);
+                        toDate.setHours(23, 59, 59, 999);
+                        
+                        allLeastAccessed = allLeastAccessed.filter(m => {
+                            if (!m.last_accessed) return false; // exclude materials with no access date
+                            const lastAccessDate = new Date(m.last_accessed);
+                            return lastAccessDate >= fromDate && lastAccessDate <= toDate;
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching least accessed materials for PDF:', error);
+            }
 
             // Title
             doc.setFontSize(18);
@@ -1968,6 +2029,44 @@ const AdminDashboard = () => {
 
                 yPos += 5;
             });
+
+            // Add least accessed materials section if data exists after filtering
+            if (allLeastAccessed && allLeastAccessed.length > 0) {
+                doc.addPage();
+                yPos = 20;
+                
+                doc.setFontSize(14);
+                doc.text("LEAST ACCESSED MATERIALS (ARCHIVE CANDIDATES)", 20, yPos);
+                yPos += 6;
+                doc.setFontSize(10);
+                doc.text(`Filtered by period: ${filterDescription}`, 20, yPos);
+                yPos += 8;
+                
+                allLeastAccessed.forEach((m, index) => {
+                    if (yPos > 250) {
+                        doc.addPage();
+                        yPos = 20;
+                    }
+                    
+                    const lastAccess = m.last_accessed ? new Date(m.last_accessed).toLocaleDateString() : 'Never';
+                    const views = m.view_count || 0;
+                    let status = "Active";
+                    if (views === 0) {
+                        status = "DORMANT (0 Views)";
+                    } else if (views < 20) {
+                        status = "Low Engagement";
+                    } else if (views < 100) {
+                        status = "Moderate Engagement";
+                    } else {
+                        status = "High Engagement";
+                    }
+                    
+                    doc.text(`${index + 1}. ${m.title || 'Unknown'}`, 20, yPos);
+                    yPos += 5;
+                    doc.text(`Last Accessed: ${lastAccess} | Views: ${views} | Status: ${status}`, 25, yPos);
+                    yPos += 5;
+                });
+            }
 
             // Save the PDF
             doc.save(`LitPathAI_MaterialReport_${new Date().toISOString().slice(0, 10)}.pdf`);
