@@ -2457,7 +2457,7 @@ const AdminDashboard = () => {
                                                 title="Export current data"
                                             >
                                                 <Download size={14} />
-                                                <span>Export</span>
+                                                <span>Export Data</span>
                                                 <ChevronDown size={14} />
                                             </button>
 
@@ -3403,7 +3403,7 @@ const AdminDashboard = () => {
                                             title="Export filtered feedback"
                                         >
                                             <Download size={14} />
-                                            <span>Export</span>
+                                            <span>Export Data</span>
                                             <ChevronDown size={14} />
                                         </button>
 
@@ -3815,7 +3815,7 @@ const AdminDashboard = () => {
                                             title="Export filtered ratings"
                                         >
                                             <Download size={14} />
-                                            <span>Export</span>
+                                            <span>Export Data</span>
                                             <ChevronDown size={14} />
                                         </button>
 
