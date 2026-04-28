@@ -13,7 +13,13 @@ from . views import (
     track_citation_copy, dashboard_citation_stats, dashboard_citation_monthly, dashboard_citation_weekly, dashboard_citation_daily,
     dashboard_least_browsed, dashboard_dormant_count
 )
-from . admin_views import admin_login_view, admin_users_view, admin_user_delete_view
+from . admin_views import (
+    admin_login_view,
+    admin_users_view,
+    admin_user_delete_view,
+    admin_user_accounts_view,
+    admin_user_account_detail_view,
+)
 from . auth_views import (
     auth_login_view, auth_register_view, auth_guest_session_view,
     auth_validate_session_view, auth_logout_view, auth_delete_guest_data_view,
@@ -91,6 +97,9 @@ urlpatterns = [
     path('admin/users/', admin_users_view, name='admin-users'),
     path('admin/users', admin_users_view, name='admin-users-no-slash'),
     path('admin/users/<uuid:admin_id>/', admin_user_delete_view, name='admin-user-delete'),
+    path('admin/user-accounts/', admin_user_accounts_view, name='admin-user-accounts'),
+    path('admin/user-accounts', admin_user_accounts_view, name='admin-user-accounts-no-slash'),
+    path('admin/user-accounts/<int:user_id>/', admin_user_account_detail_view, name='admin-user-account-detail'),
 
     # Material Views (Most Browsed)
     path('track-view/', views.track_material_view, name='track_material_view'),
