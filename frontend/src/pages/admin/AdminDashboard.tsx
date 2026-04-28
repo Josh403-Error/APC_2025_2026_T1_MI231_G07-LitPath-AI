@@ -89,6 +89,10 @@ const AdminDashboard = () => {
     const [showRatingDropdown, setShowRatingDropdown] = useState(false);
     const ratingDropdownRef = useRef(null);
 
+    // ---------- Export Dropdown ----------
+    const [showExportDropdown, setShowExportDropdown] = useState(false);
+    const exportDropdownRef = useRef(null);
+
     // ---------- Feedback Manager Pagination ----------
     const [currentFeedbackPage, setCurrentFeedbackPage] = useState(1);
     const feedbackItemsPerPage = 10;
@@ -621,6 +625,10 @@ const AdminDashboard = () => {
             if (overviewDateDropdownRef.current && !overviewDateDropdownRef.current.contains(event.target)) {
                 const isInput = event.target.tagName === 'INPUT';
                 if (!isInput) setShowOverviewDateDropdown(false);
+            }
+            // Export Dropdown
+            if (exportDropdownRef.current && !exportDropdownRef.current.contains(event.target)) {
+                setShowExportDropdown(false);
             }
             // Ratings Date Dropdown
             if (ratingsDateDropdownRef.current && !ratingsDateDropdownRef.current.contains(event.target)) {
@@ -2228,25 +2236,41 @@ const AdminDashboard = () => {
                                     <h2 className="text-xl font-bold text-gray-800">Thesis & Dissertation Usage</h2>
                                     <div className="flex gap-2">
 
-                                        {/* EXPORT CSV BUTTON */}
-                                        <button
-                                            onClick={handleExportCSV}
-                                            className="flex items-center space-x-2 px-3 py-1.5 border border-[#1E74BC] rounded-md bg-white text-[#1E74BC] hover:bg-blue-50 text-xs font-bold transition-colors shadow-sm"
-                                            title="Export current data to CSV"
-                                        >
-                                            <Download size={14} />
-                                            <span>Export CSV</span>
-                                        </button>
+                                        {/* EXPORT DROPDOWN BUTTON */}
+                                        <div className="relative" ref={exportDropdownRef}>
+                                            <button
+                                                onClick={() => setShowExportDropdown(!showExportDropdown)}
+                                                className="flex items-center space-x-2 px-3 py-1.5 border border-[#1E74BC] rounded-md bg-white text-[#1E74BC] hover:bg-blue-50 text-xs font-bold transition-colors shadow-sm"
+                                                title="Export current data"
+                                            >
+                                                <Download size={14} />
+                                                <span>Export</span>
+                                                <ChevronDown size={14} />
+                                            </button>
 
-                                        {/* EXPORT PDF BUTTON */}
-                                        <button
-                                            onClick={handleExportPDF}
-                                            className="flex items-center space-x-2 px-3 py-1.5 border border-[#1E74BC] rounded-md bg-white text-[#1E74BC] hover:bg-blue-50 text-xs font-bold transition-colors shadow-sm"
-                                            title="Export current data to PDF"
-                                        >
-                                            <Download size={14} />
-                                            <span>Export PDF</span>
-                                        </button>
+                                            {showExportDropdown && (
+                                                <div className="absolute top-full right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-xl z-30 min-w-[180px]">
+                                                    <button
+                                                        onClick={() => {
+                                                            handleExportCSV();
+                                                            setShowExportDropdown(false);
+                                                        }}
+                                                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 first:rounded-t-lg transition-colors"
+                                                    >
+                                                        Export as CSV
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            handleExportPDF();
+                                                            setShowExportDropdown(false);
+                                                        }}
+                                                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 last:rounded-b-lg transition-colors"
+                                                    >
+                                                        Export as PDF
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
 
                                         {/* Date Filter Dropdown */}
                                         <div className="relative" ref={overviewDateDropdownRef}>
