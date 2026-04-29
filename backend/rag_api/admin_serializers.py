@@ -5,6 +5,9 @@ from .models import (
     SystemSettings,
     DatabaseStructureRecord,
     DatabaseBackupRecord,
+    SecurityAuthenticationPolicy,
+    SecurityAccessControlRule,
+    SecurityAuditLogEntry,
 )
 from .password_validation import validate_password_strength
 from .system_settings import (
@@ -303,3 +306,134 @@ class DatabaseBackupRecordSerializer(serializers.ModelSerializer):
         if value < 1 or value > 3650:
             raise serializers.ValidationError('Retention days must be between 1 and 3650.')
         return value
+
+
+class SecurityAuthenticationPolicySerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    updated_by_name = serializers.CharField(source='updated_by.username', read_only=True)
+
+    class Meta:
+        model = SecurityAuthenticationPolicy
+        fields = [
+            'id',
+            'name',
+            'authentication_mode',
+            'password_min_length',
+            'password_history_count',
+            'session_timeout_minutes',
+            'max_failed_attempts',
+            'lockout_minutes',
+            'require_mfa',
+            'is_active',
+            'notes',
+            'created_at',
+            'updated_at',
+            'created_by',
+            'updated_by',
+            'created_by_name',
+            'updated_by_name',
+        ]
+        read_only_fields = [
+            'id',
+            'created_at',
+            'updated_at',
+            'created_by',
+            'updated_by',
+            'created_by_name',
+            'updated_by_name',
+        ]
+
+    def validate_password_min_length(self, value):
+        if value < 8 or value > 128:
+            raise serializers.ValidationError('Password minimum length must be between 8 and 128.')
+        return value
+
+    def validate_password_history_count(self, value):
+        if value < 1 or value > 24:
+            raise serializers.ValidationError('Password history count must be between 1 and 24.')
+        return value
+
+    def validate_session_timeout_minutes(self, value):
+        if value < 5 or value > 1440:
+            raise serializers.ValidationError('Session timeout must be between 5 and 1440 minutes.')
+        return value
+
+    def validate_max_failed_attempts(self, value):
+        if value < 1 or value > 25:
+            raise serializers.ValidationError('Max failed attempts must be between 1 and 25.')
+        return value
+
+    def validate_lockout_minutes(self, value):
+        if value < 1 or value > 1440:
+            raise serializers.ValidationError('Lockout duration must be between 1 and 1440 minutes.')
+        return value
+
+
+class SecurityAccessControlRuleSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    updated_by_name = serializers.CharField(source='updated_by.username', read_only=True)
+
+    class Meta:
+        model = SecurityAccessControlRule
+        fields = [
+            'id',
+            'name',
+            'subject_type',
+            'subject_name',
+            'resource_name',
+            'permission_level',
+            'scope',
+            'conditions',
+            'is_active',
+            'notes',
+            'created_at',
+            'updated_at',
+            'created_by',
+            'updated_by',
+            'created_by_name',
+            'updated_by_name',
+        ]
+        read_only_fields = [
+            'id',
+            'created_at',
+            'updated_at',
+            'created_by',
+            'updated_by',
+            'created_by_name',
+            'updated_by_name',
+        ]
+
+
+class SecurityAuditLogEntrySerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    updated_by_name = serializers.CharField(source='updated_by.username', read_only=True)
+
+    class Meta:
+        model = SecurityAuditLogEntry
+        fields = [
+            'id',
+            'event_type',
+            'actor_label',
+            'target_label',
+            'action_summary',
+            'severity',
+            'outcome',
+            'ip_address',
+            'occurred_at',
+            'notes',
+            'created_at',
+            'updated_at',
+            'created_by',
+            'updated_by',
+            'created_by_name',
+            'updated_by_name',
+        ]
+        read_only_fields = [
+            'id',
+            'created_at',
+            'updated_at',
+            'created_by',
+            'updated_by',
+            'created_by_name',
+            'updated_by_name',
+        ]

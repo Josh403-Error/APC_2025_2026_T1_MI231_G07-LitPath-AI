@@ -64,6 +64,43 @@ const emptyBackupForm = {
     backup_completed_at: '',
 };
 
+const emptySecurityPolicyForm = {
+    name: '',
+    authentication_mode: 'password_mfa',
+    password_min_length: 12,
+    password_history_count: 5,
+    session_timeout_minutes: 60,
+    max_failed_attempts: 5,
+    lockout_minutes: 15,
+    require_mfa: true,
+    is_active: true,
+    notes: '',
+};
+
+const emptySecurityAccessRuleForm = {
+    name: '',
+    subject_type: 'role',
+    subject_name: '',
+    resource_name: '',
+    permission_level: 'read',
+    scope: '',
+    conditions: '',
+    is_active: true,
+    notes: '',
+};
+
+const emptySecurityAuditLogForm = {
+    event_type: 'manual_note',
+    actor_label: '',
+    target_label: '',
+    action_summary: '',
+    severity: 'info',
+    outcome: 'success',
+    ip_address: '',
+    occurred_at: '',
+    notes: '',
+};
+
 const defaultSystemSettings = {
     ai_model_settings: {
         provider: 'gemini',
@@ -145,12 +182,15 @@ const getBadgeClasses = (role, isActive) => {
     return 'border-emerald-200 bg-emerald-50 text-emerald-700';
 };
 
+const formatChoiceLabel = (value) => value ? value.replace(/_/g, ' ') : 'Unknown';
+
 const ITAdminDashboard = () => {
     const { user, logout } = useAuth();
 
     const tabs = [
         { key: 'accounts', label: 'Account Management' },
         { key: 'database', label: 'Manage Database Structure & Backups' },
+        { key: 'security', label: 'System Security' },
         { key: 'system', label: 'System Settings' },
     ];
     const [activeTab, setActiveTab] = useState('accounts');
@@ -180,6 +220,18 @@ const ITAdminDashboard = () => {
     const [backupForm, setBackupForm] = useState(emptyBackupForm);
     const [editingStructureId, setEditingStructureId] = useState(null);
     const [editingBackupId, setEditingBackupId] = useState(null);
+    const [securityLoading, setSecurityLoading] = useState(true);
+    const [securitySaving, setSecuritySaving] = useState(false);
+    const [securityError, setSecurityError] = useState('');
+    const [securityPolicies, setSecurityPolicies] = useState([]);
+    const [securityAccessRules, setSecurityAccessRules] = useState([]);
+    const [securityAuditLogs, setSecurityAuditLogs] = useState([]);
+    const [securityPolicyForm, setSecurityPolicyForm] = useState(emptySecurityPolicyForm);
+    const [securityAccessRuleForm, setSecurityAccessRuleForm] = useState(emptySecurityAccessRuleForm);
+    const [securityAuditLogForm, setSecurityAuditLogForm] = useState(emptySecurityAuditLogForm);
+    const [editingSecurityPolicyId, setEditingSecurityPolicyId] = useState(null);
+    const [editingSecurityAccessRuleId, setEditingSecurityAccessRuleId] = useState(null);
+    const [editingSecurityAuditLogId, setEditingSecurityAuditLogId] = useState(null);
 
     const showToast = (type, message) => {
         setToast({ show: true, type, message });
@@ -262,10 +314,46 @@ const ITAdminDashboard = () => {
         }
     };
 
+    const loadSecurityAdminData = async () => {
+        setSecurityLoading(true);
+        setSecurityError('');
+
+        try {
+            const [policiesResponse, rulesResponse, logsResponse] = await Promise.all([
+                fetch(`${API_BASE_URL}/admin/security-authentication-policies/`, { headers: apiHeaders(true) }),
+                fetch(`${API_BASE_URL}/admin/security-access-control-rules/`, { headers: apiHeaders(true) }),
+                fetch(`${API_BASE_URL}/admin/security-audit-logs/`, { headers: apiHeaders(true) }),
+            ]);
+
+            const policiesData = await parseApiResponse(policiesResponse, 'Unable to load authentication policies.');
+            const rulesData = await parseApiResponse(rulesResponse, 'Unable to load access control rules.');
+            const logsData = await parseApiResponse(logsResponse, 'Unable to load audit log entries.');
+
+            if (!policiesResponse.ok || !policiesData.success) {
+                throw new Error(policiesData.message || 'Unable to load authentication policies.');
+            }
+            if (!rulesResponse.ok || !rulesData.success) {
+                throw new Error(rulesData.message || 'Unable to load access control rules.');
+            }
+            if (!logsResponse.ok || !logsData.success) {
+                throw new Error(logsData.message || 'Unable to load audit log entries.');
+            }
+
+            setSecurityPolicies(policiesData.records || []);
+            setSecurityAccessRules(rulesData.records || []);
+            setSecurityAuditLogs(logsData.records || []);
+        } catch (error) {
+            setSecurityError(error.message || 'Unable to load security administration data.');
+        } finally {
+            setSecurityLoading(false);
+        }
+    };
+
     useEffect(() => {
         loadAccounts();
         loadSettings();
         loadDatabaseAdminData();
+        loadSecurityAdminData();
     }, []);
 
     useEffect(() => {
@@ -705,10 +793,260 @@ const ITAdminDashboard = () => {
         }
     };
 
+    const resetSecurityPolicyForm = () => {
+        setSecurityPolicyForm(emptySecurityPolicyForm);
+        setEditingSecurityPolicyId(null);
+    };
+
+    const resetSecurityAccessRuleForm = () => {
+        setSecurityAccessRuleForm(emptySecurityAccessRuleForm);
+        setEditingSecurityAccessRuleId(null);
+    };
+
+    const resetSecurityAuditLogForm = () => {
+        setSecurityAuditLogForm(emptySecurityAuditLogForm);
+        setEditingSecurityAuditLogId(null);
+    };
+
+    const editSecurityPolicy = (record) => {
+        setEditingSecurityPolicyId(record.id);
+        setSecurityPolicyForm({
+            name: record.name || '',
+            authentication_mode: record.authentication_mode || 'password_mfa',
+            password_min_length: Number(record.password_min_length || 12),
+            password_history_count: Number(record.password_history_count || 5),
+            session_timeout_minutes: Number(record.session_timeout_minutes || 60),
+            max_failed_attempts: Number(record.max_failed_attempts || 5),
+            lockout_minutes: Number(record.lockout_minutes || 15),
+            require_mfa: Boolean(record.require_mfa),
+            is_active: Boolean(record.is_active),
+            notes: record.notes || '',
+        });
+    };
+
+    const editSecurityAccessRule = (record) => {
+        setEditingSecurityAccessRuleId(record.id);
+        setSecurityAccessRuleForm({
+            name: record.name || '',
+            subject_type: record.subject_type || 'role',
+            subject_name: record.subject_name || '',
+            resource_name: record.resource_name || '',
+            permission_level: record.permission_level || 'read',
+            scope: record.scope || '',
+            conditions: record.conditions || '',
+            is_active: Boolean(record.is_active),
+            notes: record.notes || '',
+        });
+    };
+
+    const editSecurityAuditLog = (record) => {
+        setEditingSecurityAuditLogId(record.id);
+        setSecurityAuditLogForm({
+            event_type: record.event_type || 'manual_note',
+            actor_label: record.actor_label || '',
+            target_label: record.target_label || '',
+            action_summary: record.action_summary || '',
+            severity: record.severity || 'info',
+            outcome: record.outcome || 'success',
+            ip_address: record.ip_address || '',
+            occurred_at: record.occurred_at ? new Date(record.occurred_at).toISOString().slice(0, 16) : '',
+            notes: record.notes || '',
+        });
+    };
+
+    const submitSecurityPolicy = async (event) => {
+        event.preventDefault();
+        setSecuritySaving(true);
+        setSecurityError('');
+
+        try {
+            const response = await fetch(
+                editingSecurityPolicyId
+                    ? `${API_BASE_URL}/admin/security-authentication-policies/${editingSecurityPolicyId}/`
+                    : `${API_BASE_URL}/admin/security-authentication-policies/`,
+                {
+                    method: editingSecurityPolicyId ? 'PATCH' : 'POST',
+                    headers: apiHeaders(true),
+                    body: JSON.stringify({
+                        ...securityPolicyForm,
+                        password_min_length: Number(securityPolicyForm.password_min_length),
+                        password_history_count: Number(securityPolicyForm.password_history_count),
+                        session_timeout_minutes: Number(securityPolicyForm.session_timeout_minutes),
+                        max_failed_attempts: Number(securityPolicyForm.max_failed_attempts),
+                        lockout_minutes: Number(securityPolicyForm.lockout_minutes),
+                    }),
+                }
+            );
+
+            const data = await parseApiResponse(response, 'Unable to save authentication policy.');
+            if (!response.ok || !data.success) {
+                const errors = data.errors
+                    ? Object.values(data.errors).flat().join(' ')
+                    : data.message || 'Unable to save authentication policy.';
+                throw new Error(errors);
+            }
+
+            showToast('success', editingSecurityPolicyId ? 'Authentication policy updated.' : 'Authentication policy created.');
+            resetSecurityPolicyForm();
+            await loadSecurityAdminData();
+        } catch (error) {
+            setSecurityError(error.message || 'Unable to save authentication policy.');
+        } finally {
+            setSecuritySaving(false);
+        }
+    };
+
+    const submitSecurityAccessRule = async (event) => {
+        event.preventDefault();
+        setSecuritySaving(true);
+        setSecurityError('');
+
+        try {
+            const response = await fetch(
+                editingSecurityAccessRuleId
+                    ? `${API_BASE_URL}/admin/security-access-control-rules/${editingSecurityAccessRuleId}/`
+                    : `${API_BASE_URL}/admin/security-access-control-rules/`,
+                {
+                    method: editingSecurityAccessRuleId ? 'PATCH' : 'POST',
+                    headers: apiHeaders(true),
+                    body: JSON.stringify(securityAccessRuleForm),
+                }
+            );
+
+            const data = await parseApiResponse(response, 'Unable to save access control rule.');
+            if (!response.ok || !data.success) {
+                const errors = data.errors
+                    ? Object.values(data.errors).flat().join(' ')
+                    : data.message || 'Unable to save access control rule.';
+                throw new Error(errors);
+            }
+
+            showToast('success', editingSecurityAccessRuleId ? 'Access control rule updated.' : 'Access control rule created.');
+            resetSecurityAccessRuleForm();
+            await loadSecurityAdminData();
+        } catch (error) {
+            setSecurityError(error.message || 'Unable to save access control rule.');
+        } finally {
+            setSecuritySaving(false);
+        }
+    };
+
+    const submitSecurityAuditLog = async (event) => {
+        event.preventDefault();
+        setSecuritySaving(true);
+        setSecurityError('');
+
+        try {
+            const payload = {
+                ...securityAuditLogForm,
+                occurred_at: securityAuditLogForm.occurred_at ? new Date(securityAuditLogForm.occurred_at).toISOString() : undefined,
+            };
+
+            const response = await fetch(
+                editingSecurityAuditLogId
+                    ? `${API_BASE_URL}/admin/security-audit-logs/${editingSecurityAuditLogId}/`
+                    : `${API_BASE_URL}/admin/security-audit-logs/`,
+                {
+                    method: editingSecurityAuditLogId ? 'PATCH' : 'POST',
+                    headers: apiHeaders(true),
+                    body: JSON.stringify(payload),
+                }
+            );
+
+            const data = await parseApiResponse(response, 'Unable to save audit log entry.');
+            if (!response.ok || !data.success) {
+                const errors = data.errors
+                    ? Object.values(data.errors).flat().join(' ')
+                    : data.message || 'Unable to save audit log entry.';
+                throw new Error(errors);
+            }
+
+            showToast('success', editingSecurityAuditLogId ? 'Audit log entry updated.' : 'Audit log entry created.');
+            resetSecurityAuditLogForm();
+            await loadSecurityAdminData();
+        } catch (error) {
+            setSecurityError(error.message || 'Unable to save audit log entry.');
+        } finally {
+            setSecuritySaving(false);
+        }
+    };
+
+    const deleteSecurityPolicy = async (recordId) => {
+        if (!window.confirm('Delete this authentication policy?')) return;
+
+        setSecuritySaving(true);
+        setSecurityError('');
+        try {
+            const response = await fetch(`${API_BASE_URL}/admin/security-authentication-policies/${recordId}/`, {
+                method: 'DELETE',
+                headers: apiHeaders(true),
+            });
+            const data = await parseApiResponse(response, 'Unable to delete authentication policy.');
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Unable to delete authentication policy.');
+            }
+            showToast('success', 'Authentication policy deleted.');
+            await loadSecurityAdminData();
+        } catch (error) {
+            setSecurityError(error.message || 'Unable to delete authentication policy.');
+        } finally {
+            setSecuritySaving(false);
+        }
+    };
+
+    const deleteSecurityAccessRule = async (recordId) => {
+        if (!window.confirm('Delete this access control rule?')) return;
+
+        setSecuritySaving(true);
+        setSecurityError('');
+        try {
+            const response = await fetch(`${API_BASE_URL}/admin/security-access-control-rules/${recordId}/`, {
+                method: 'DELETE',
+                headers: apiHeaders(true),
+            });
+            const data = await parseApiResponse(response, 'Unable to delete access control rule.');
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Unable to delete access control rule.');
+            }
+            showToast('success', 'Access control rule deleted.');
+            await loadSecurityAdminData();
+        } catch (error) {
+            setSecurityError(error.message || 'Unable to delete access control rule.');
+        } finally {
+            setSecuritySaving(false);
+        }
+    };
+
+    const deleteSecurityAuditLog = async (recordId) => {
+        if (!window.confirm('Delete this audit log entry?')) return;
+
+        setSecuritySaving(true);
+        setSecurityError('');
+        try {
+            const response = await fetch(`${API_BASE_URL}/admin/security-audit-logs/${recordId}/`, {
+                method: 'DELETE',
+                headers: apiHeaders(true),
+            });
+            const data = await parseApiResponse(response, 'Unable to delete audit log entry.');
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Unable to delete audit log entry.');
+            }
+            showToast('success', 'Audit log entry deleted.');
+            await loadSecurityAdminData();
+        } catch (error) {
+            setSecurityError(error.message || 'Unable to delete audit log entry.');
+        } finally {
+            setSecuritySaving(false);
+        }
+    };
+
     const passwordChecks = getPasswordRequirementChecks(form.password || '');
     const configuredIntegrations = Object.values(systemSettings.environment_config || {}).filter(Boolean).length;
     const currentStructure = databaseStructures.find((record) => record.is_current);
     const completedBackups = backupRecords.filter((record) => record.status === 'completed').length;
+    const activeSecurityPolicies = securityPolicies.filter((record) => record.is_active).length;
+    const activeAccessRules = securityAccessRules.filter((record) => record.is_active).length;
+    const criticalAuditEvents = securityAuditLogs.filter((record) => record.severity === 'critical').length;
 
     return (
         <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#f8fafc,_#eef2ff_38%,_#e2e8f0_100%)] text-slate-900">
@@ -801,6 +1139,33 @@ const ITAdminDashboard = () => {
                                     <span className="text-slate-300">•</span>
                                     <span className="font-semibold text-slate-700">
                                         Current schema: {currentStructure?.schema_version || 'Not set'}
+                                    </span>
+                                </>
+                            ) : activeTab === 'security' ? (
+                                <>
+                                    <span className="inline-flex items-center gap-2 font-semibold text-slate-900">
+                                        <ShieldCheck className="h-4 w-4 text-slate-400" />
+                                        Policies {securityPolicies.length}
+                                    </span>
+                                    <span className="text-slate-300">•</span>
+                                    <span className="inline-flex items-center gap-2 font-semibold text-emerald-800">
+                                        <KeyRound className="h-4 w-4 text-emerald-600" />
+                                        Active policies {activeSecurityPolicies}
+                                    </span>
+                                    <span className="text-slate-300">•</span>
+                                    <span className="inline-flex items-center gap-2 font-semibold text-sky-800">
+                                        <UserRoundCog className="h-4 w-4 text-sky-600" />
+                                        Access rules {securityAccessRules.length}
+                                    </span>
+                                    <span className="text-slate-300">•</span>
+                                    <span className="inline-flex items-center gap-2 font-semibold text-emerald-800">
+                                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                                        Active rules {activeAccessRules}
+                                    </span>
+                                    <span className="text-slate-300">•</span>
+                                    <span className="inline-flex items-center gap-2 font-semibold text-rose-800">
+                                        <AlertCircle className="h-4 w-4 text-rose-600" />
+                                        Critical events {criticalAuditEvents}
                                     </span>
                                 </>
                             ) : (
@@ -1311,6 +1676,585 @@ const ITAdminDashboard = () => {
                                                                             <button
                                                                                 type="button"
                                                                                 onClick={() => deleteBackup(record.id)}
+                                                                                className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                                                                            >
+                                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                                                Delete
+                                                                            </button>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                )}
+                                            </div>
+                                        </section>
+                                    </div>
+                                )}
+                            </>
+                        ) : activeTab === 'security' ? (
+                            <>
+                                <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                                    <div>
+                                        <h2 className="text-2xl font-black tracking-tight text-slate-900">Oversee System Security</h2>
+                                        <p className="mt-1 text-sm text-slate-600">
+                                            Manage authentication policies, access control rules, and audit trail entries from one security console.
+                                        </p>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={loadSecurityAdminData}
+                                        className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50"
+                                    >
+                                        <RefreshCw className={`h-4 w-4 ${securityLoading ? 'animate-spin' : ''}`} />
+                                        Refresh
+                                    </button>
+                                </div>
+
+                                {securityError ? (
+                                    <div className="mb-5 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                                        <span>{securityError}</span>
+                                    </div>
+                                ) : null}
+
+                                {securityLoading ? (
+                                    <div className="mt-2 flex min-h-[320px] items-center justify-center rounded-[1.75rem] border border-slate-200 bg-white shadow-sm">
+                                        <div className="flex items-center gap-3 text-slate-500">
+                                            <Loader2 className="h-5 w-5 animate-spin" />
+                                            Loading security records...
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="grid gap-6">
+                                        <section className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+                                            <div className="mb-4">
+                                                <h3 className="text-lg font-black tracking-tight text-slate-900">Authentication Policies</h3>
+                                                <p className="mt-1 text-sm text-slate-600">Define password, MFA, session, and lockout posture for the system.</p>
+                                            </div>
+
+                                            <form onSubmit={submitSecurityPolicy} className="grid gap-3">
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    <input
+                                                        value={securityPolicyForm.name}
+                                                        onChange={(event) => setSecurityPolicyForm({ ...securityPolicyForm, name: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="Policy name"
+                                                        required
+                                                    />
+                                                    <select
+                                                        value={securityPolicyForm.authentication_mode}
+                                                        onChange={(event) => setSecurityPolicyForm({ ...securityPolicyForm, authentication_mode: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none"
+                                                    >
+                                                        <option value="password">Password only</option>
+                                                        <option value="password_mfa">Password + MFA</option>
+                                                        <option value="sso">Single sign-on</option>
+                                                        <option value="hybrid">Hybrid</option>
+                                                    </select>
+                                                </div>
+
+                                                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                                                    <input
+                                                        type="number"
+                                                        min="8"
+                                                        max="128"
+                                                        value={securityPolicyForm.password_min_length}
+                                                        onChange={(event) => setSecurityPolicyForm({ ...securityPolicyForm, password_min_length: Number(event.target.value) })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="Password length"
+                                                    />
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        max="24"
+                                                        value={securityPolicyForm.password_history_count}
+                                                        onChange={(event) => setSecurityPolicyForm({ ...securityPolicyForm, password_history_count: Number(event.target.value) })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="History count"
+                                                    />
+                                                    <input
+                                                        type="number"
+                                                        min="5"
+                                                        max="1440"
+                                                        value={securityPolicyForm.session_timeout_minutes}
+                                                        onChange={(event) => setSecurityPolicyForm({ ...securityPolicyForm, session_timeout_minutes: Number(event.target.value) })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="Session timeout"
+                                                    />
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        max="25"
+                                                        value={securityPolicyForm.max_failed_attempts}
+                                                        onChange={(event) => setSecurityPolicyForm({ ...securityPolicyForm, max_failed_attempts: Number(event.target.value) })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="Failed attempts"
+                                                    />
+                                                </div>
+
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        max="1440"
+                                                        value={securityPolicyForm.lockout_minutes}
+                                                        onChange={(event) => setSecurityPolicyForm({ ...securityPolicyForm, lockout_minutes: Number(event.target.value) })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="Lockout minutes"
+                                                    />
+                                                    <div className="grid gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700">
+                                                        <label className="flex items-center justify-between gap-4 font-semibold">
+                                                            Require MFA
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={securityPolicyForm.require_mfa}
+                                                                onChange={(event) => setSecurityPolicyForm({ ...securityPolicyForm, require_mfa: event.target.checked })}
+                                                                className="h-5 w-5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                                                            />
+                                                        </label>
+                                                        <label className="flex items-center justify-between gap-4 font-semibold">
+                                                            Policy active
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={securityPolicyForm.is_active}
+                                                                onChange={(event) => setSecurityPolicyForm({ ...securityPolicyForm, is_active: event.target.checked })}
+                                                                className="h-5 w-5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                                                            />
+                                                        </label>
+                                                    </div>
+                                                </div>
+
+                                                <textarea
+                                                    value={securityPolicyForm.notes}
+                                                    onChange={(event) => setSecurityPolicyForm({ ...securityPolicyForm, notes: event.target.value })}
+                                                    className="min-h-[90px] rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                    placeholder="Notes"
+                                                />
+
+                                                <div className="flex flex-wrap justify-end gap-2">
+                                                    {editingSecurityPolicyId ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={resetSecurityPolicyForm}
+                                                            className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                                                        >
+                                                            Cancel edit
+                                                        </button>
+                                                    ) : null}
+                                                    <button
+                                                        type="submit"
+                                                        disabled={securitySaving}
+                                                        className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-70"
+                                                    >
+                                                        {securitySaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                                        {editingSecurityPolicyId ? 'Update policy' : 'Create policy'}
+                                                    </button>
+                                                </div>
+                                            </form>
+
+                                            <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
+                                                {securityPolicies.length === 0 ? (
+                                                    <div className="flex min-h-[180px] flex-col items-center justify-center px-6 py-10 text-center">
+                                                        <div className="rounded-full bg-slate-100 p-3 text-slate-500">
+                                                            <ShieldCheck className="h-6 w-6" />
+                                                        </div>
+                                                        <h4 className="mt-4 text-base font-bold text-slate-900">No authentication policies yet</h4>
+                                                        <p className="mt-1 max-w-md text-sm text-slate-500">
+                                                            Add the first policy to define password, MFA, lockout, and session controls.
+                                                        </p>
+                                                    </div>
+                                                ) : (
+                                                    <table className="min-w-full divide-y divide-slate-200 text-sm">
+                                                        <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                                                            <tr>
+                                                                <th className="px-4 py-3">Policy</th>
+                                                                <th className="px-4 py-3">Mode</th>
+                                                                <th className="px-4 py-3">Status</th>
+                                                                <th className="px-4 py-3 text-right">Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-100 bg-white">
+                                                            {securityPolicies.map((record) => (
+                                                                <tr key={record.id}>
+                                                                    <td className="px-4 py-3">
+                                                                        <p className="font-semibold text-slate-900">{record.name}</p>
+                                                                        <p className="text-xs text-slate-500">
+                                                                            Min length {record.password_min_length} · Timeout {record.session_timeout_minutes} min
+                                                                        </p>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-slate-600">{formatChoiceLabel(record.authentication_mode)}</td>
+                                                                    <td className="px-4 py-3">
+                                                                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${record.is_active ? 'border border-emerald-200 bg-emerald-50 text-emerald-700' : 'border border-slate-200 bg-slate-50 text-slate-700'}`}>
+                                                                            {record.is_active ? 'Active' : 'Inactive'}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-4 py-3">
+                                                                        <div className="flex justify-end gap-2">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => editSecurityPolicy(record)}
+                                                                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                                                            >
+                                                                                <Edit2 className="h-3.5 w-3.5" />
+                                                                                Edit
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => deleteSecurityPolicy(record.id)}
+                                                                                className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                                                                            >
+                                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                                                Delete
+                                                                            </button>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                )}
+                                            </div>
+                                        </section>
+
+                                        <section className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+                                            <div className="mb-4">
+                                                <h3 className="text-lg font-black tracking-tight text-slate-900">Access Control Rules</h3>
+                                                <p className="mt-1 text-sm text-slate-600">Set role, user, or group-based access rules for sensitive resources.</p>
+                                            </div>
+
+                                            <form onSubmit={submitSecurityAccessRule} className="grid gap-3">
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    <input
+                                                        value={securityAccessRuleForm.name}
+                                                        onChange={(event) => setSecurityAccessRuleForm({ ...securityAccessRuleForm, name: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="Rule name"
+                                                        required
+                                                    />
+                                                    <select
+                                                        value={securityAccessRuleForm.subject_type}
+                                                        onChange={(event) => setSecurityAccessRuleForm({ ...securityAccessRuleForm, subject_type: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none"
+                                                    >
+                                                        <option value="role">Role</option>
+                                                        <option value="user">User</option>
+                                                        <option value="group">Group</option>
+                                                    </select>
+                                                </div>
+
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    <input
+                                                        value={securityAccessRuleForm.subject_name}
+                                                        onChange={(event) => setSecurityAccessRuleForm({ ...securityAccessRuleForm, subject_name: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="Subject name"
+                                                        required
+                                                    />
+                                                    <input
+                                                        value={securityAccessRuleForm.resource_name}
+                                                        onChange={(event) => setSecurityAccessRuleForm({ ...securityAccessRuleForm, resource_name: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="Resource name"
+                                                        required
+                                                    />
+                                                </div>
+
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    <select
+                                                        value={securityAccessRuleForm.permission_level}
+                                                        onChange={(event) => setSecurityAccessRuleForm({ ...securityAccessRuleForm, permission_level: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none"
+                                                    >
+                                                        <option value="read">Read</option>
+                                                        <option value="write">Write</option>
+                                                        <option value="admin">Admin</option>
+                                                    </select>
+                                                    <input
+                                                        value={securityAccessRuleForm.scope}
+                                                        onChange={(event) => setSecurityAccessRuleForm({ ...securityAccessRuleForm, scope: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="Scope (optional)"
+                                                    />
+                                                </div>
+
+                                                <textarea
+                                                    value={securityAccessRuleForm.conditions}
+                                                    onChange={(event) => setSecurityAccessRuleForm({ ...securityAccessRuleForm, conditions: event.target.value })}
+                                                    className="min-h-[90px] rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                    placeholder="Conditions"
+                                                />
+
+                                                <div className="grid gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 sm:grid-cols-2">
+                                                    <label className="flex items-center justify-between gap-4 font-semibold">
+                                                        Active rule
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={securityAccessRuleForm.is_active}
+                                                            onChange={(event) => setSecurityAccessRuleForm({ ...securityAccessRuleForm, is_active: event.target.checked })}
+                                                            className="h-5 w-5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                                                        />
+                                                    </label>
+                                                    <label className="flex items-center justify-between gap-4 font-semibold">
+                                                        Notes available
+                                                        <span className="text-xs text-slate-500">Use notes for review context</span>
+                                                    </label>
+                                                </div>
+
+                                                <textarea
+                                                    value={securityAccessRuleForm.notes}
+                                                    onChange={(event) => setSecurityAccessRuleForm({ ...securityAccessRuleForm, notes: event.target.value })}
+                                                    className="min-h-[90px] rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                    placeholder="Notes"
+                                                />
+
+                                                <div className="flex flex-wrap justify-end gap-2">
+                                                    {editingSecurityAccessRuleId ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={resetSecurityAccessRuleForm}
+                                                            className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                                                        >
+                                                            Cancel edit
+                                                        </button>
+                                                    ) : null}
+                                                    <button
+                                                        type="submit"
+                                                        disabled={securitySaving}
+                                                        className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-70"
+                                                    >
+                                                        {securitySaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                                        {editingSecurityAccessRuleId ? 'Update rule' : 'Create rule'}
+                                                    </button>
+                                                </div>
+                                            </form>
+
+                                            <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
+                                                {securityAccessRules.length === 0 ? (
+                                                    <div className="flex min-h-[180px] flex-col items-center justify-center px-6 py-10 text-center">
+                                                        <div className="rounded-full bg-slate-100 p-3 text-slate-500">
+                                                            <UserRoundCog className="h-6 w-6" />
+                                                        </div>
+                                                        <h4 className="mt-4 text-base font-bold text-slate-900">No access control rules yet</h4>
+                                                        <p className="mt-1 max-w-md text-sm text-slate-500">
+                                                            Create rules for roles, users, or groups to document who can access each resource.
+                                                        </p>
+                                                    </div>
+                                                ) : (
+                                                    <table className="min-w-full divide-y divide-slate-200 text-sm">
+                                                        <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                                                            <tr>
+                                                                <th className="px-4 py-3">Rule</th>
+                                                                <th className="px-4 py-3">Subject</th>
+                                                                <th className="px-4 py-3">Permission</th>
+                                                                <th className="px-4 py-3 text-right">Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-100 bg-white">
+                                                            {securityAccessRules.map((record) => (
+                                                                <tr key={record.id}>
+                                                                    <td className="px-4 py-3">
+                                                                        <p className="font-semibold text-slate-900">{record.name}</p>
+                                                                        <p className="text-xs text-slate-500">{record.resource_name}{record.scope ? ` · ${record.scope}` : ''}</p>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-slate-600">
+                                                                        {formatChoiceLabel(record.subject_type)}: {record.subject_name}
+                                                                    </td>
+                                                                    <td className="px-4 py-3">
+                                                                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${record.permission_level === 'admin' ? 'border border-rose-200 bg-rose-50 text-rose-700' : record.permission_level === 'write' ? 'border border-amber-200 bg-amber-50 text-amber-700' : 'border border-sky-200 bg-sky-50 text-sky-700'}`}>
+                                                                            {formatChoiceLabel(record.permission_level)}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-4 py-3">
+                                                                        <div className="flex justify-end gap-2">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => editSecurityAccessRule(record)}
+                                                                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                                                            >
+                                                                                <Edit2 className="h-3.5 w-3.5" />
+                                                                                Edit
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => deleteSecurityAccessRule(record.id)}
+                                                                                className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                                                                            >
+                                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                                                Delete
+                                                                            </button>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                )}
+                                            </div>
+                                        </section>
+
+                                        <section className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+                                            <div className="mb-4">
+                                                <h3 className="text-lg font-black tracking-tight text-slate-900">Audit Log Entries</h3>
+                                                <p className="mt-1 text-sm text-slate-600">Record security events for authentication, role changes, and access actions.</p>
+                                            </div>
+
+                                            <form onSubmit={submitSecurityAuditLog} className="grid gap-3">
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    <select
+                                                        value={securityAuditLogForm.event_type}
+                                                        onChange={(event) => setSecurityAuditLogForm({ ...securityAuditLogForm, event_type: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none"
+                                                    >
+                                                        <option value="manual_note">Manual note</option>
+                                                        <option value="login_success">Login success</option>
+                                                        <option value="login_failure">Login failure</option>
+                                                        <option value="role_change">Role change</option>
+                                                        <option value="access_change">Access change</option>
+                                                        <option value="security_update">Security update</option>
+                                                    </select>
+                                                    <select
+                                                        value={securityAuditLogForm.severity}
+                                                        onChange={(event) => setSecurityAuditLogForm({ ...securityAuditLogForm, severity: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none"
+                                                    >
+                                                        <option value="info">Info</option>
+                                                        <option value="warning">Warning</option>
+                                                        <option value="critical">Critical</option>
+                                                    </select>
+                                                </div>
+
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    <input
+                                                        value={securityAuditLogForm.actor_label}
+                                                        onChange={(event) => setSecurityAuditLogForm({ ...securityAuditLogForm, actor_label: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="Actor"
+                                                        required
+                                                    />
+                                                    <input
+                                                        value={securityAuditLogForm.target_label}
+                                                        onChange={(event) => setSecurityAuditLogForm({ ...securityAuditLogForm, target_label: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="Target (optional)"
+                                                    />
+                                                </div>
+
+                                                <input
+                                                    value={securityAuditLogForm.action_summary}
+                                                    onChange={(event) => setSecurityAuditLogForm({ ...securityAuditLogForm, action_summary: event.target.value })}
+                                                    className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                    placeholder="Action summary"
+                                                    required
+                                                />
+
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    <select
+                                                        value={securityAuditLogForm.outcome}
+                                                        onChange={(event) => setSecurityAuditLogForm({ ...securityAuditLogForm, outcome: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none"
+                                                    >
+                                                        <option value="success">Success</option>
+                                                        <option value="blocked">Blocked</option>
+                                                        <option value="failure">Failure</option>
+                                                    </select>
+                                                    <input
+                                                        value={securityAuditLogForm.ip_address}
+                                                        onChange={(event) => setSecurityAuditLogForm({ ...securityAuditLogForm, ip_address: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="IP address"
+                                                    />
+                                                </div>
+
+                                                <input
+                                                    type="datetime-local"
+                                                    value={securityAuditLogForm.occurred_at}
+                                                    onChange={(event) => setSecurityAuditLogForm({ ...securityAuditLogForm, occurred_at: event.target.value })}
+                                                    className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                />
+
+                                                <textarea
+                                                    value={securityAuditLogForm.notes}
+                                                    onChange={(event) => setSecurityAuditLogForm({ ...securityAuditLogForm, notes: event.target.value })}
+                                                    className="min-h-[90px] rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                    placeholder="Notes"
+                                                />
+
+                                                <div className="flex flex-wrap justify-end gap-2">
+                                                    {editingSecurityAuditLogId ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={resetSecurityAuditLogForm}
+                                                            className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                                                        >
+                                                            Cancel edit
+                                                        </button>
+                                                    ) : null}
+                                                    <button
+                                                        type="submit"
+                                                        disabled={securitySaving}
+                                                        className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-70"
+                                                    >
+                                                        {securitySaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                                        {editingSecurityAuditLogId ? 'Update entry' : 'Create entry'}
+                                                    </button>
+                                                </div>
+                                            </form>
+
+                                            <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
+                                                {securityAuditLogs.length === 0 ? (
+                                                    <div className="flex min-h-[180px] flex-col items-center justify-center px-6 py-10 text-center">
+                                                        <div className="rounded-full bg-slate-100 p-3 text-slate-500">
+                                                            <AlertCircle className="h-6 w-6" />
+                                                        </div>
+                                                        <h4 className="mt-4 text-base font-bold text-slate-900">No audit entries yet</h4>
+                                                        <p className="mt-1 max-w-md text-sm text-slate-500">
+                                                            Add audit records to track the security history of logins, role changes, and access decisions.
+                                                        </p>
+                                                    </div>
+                                                ) : (
+                                                    <table className="min-w-full divide-y divide-slate-200 text-sm">
+                                                        <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                                                            <tr>
+                                                                <th className="px-4 py-3">Event</th>
+                                                                <th className="px-4 py-3">Actor</th>
+                                                                <th className="px-4 py-3">Severity</th>
+                                                                <th className="px-4 py-3">When</th>
+                                                                <th className="px-4 py-3 text-right">Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-100 bg-white">
+                                                            {securityAuditLogs.map((record) => (
+                                                                <tr key={record.id}>
+                                                                    <td className="px-4 py-3">
+                                                                        <p className="font-semibold text-slate-900">{formatChoiceLabel(record.event_type)}</p>
+                                                                        <p className="text-xs text-slate-500">{record.action_summary}</p>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-slate-600">
+                                                                        <p>{record.actor_label}</p>
+                                                                        {record.target_label ? <p className="text-xs text-slate-500">Target: {record.target_label}</p> : null}
+                                                                    </td>
+                                                                    <td className="px-4 py-3">
+                                                                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${record.severity === 'critical' ? 'border border-rose-200 bg-rose-50 text-rose-700' : record.severity === 'warning' ? 'border border-amber-200 bg-amber-50 text-amber-700' : 'border border-sky-200 bg-sky-50 text-sky-700'}`}>
+                                                                            {formatChoiceLabel(record.severity)}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-slate-600">{formatDateTime(record.occurred_at)}</td>
+                                                                    <td className="px-4 py-3">
+                                                                        <div className="flex justify-end gap-2">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => editSecurityAuditLog(record)}
+                                                                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                                                            >
+                                                                                <Edit2 className="h-3.5 w-3.5" />
+                                                                                Edit
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => deleteSecurityAuditLog(record.id)}
                                                                                 className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50"
                                                                             >
                                                                                 <Trash2 className="h-3.5 w-3.5" />

@@ -334,6 +334,161 @@ class DatabaseBackupRecord(models.Model):
         return f"{self.name} [{self.backup_type}]"
 
 
+class SecurityAuthenticationPolicy(models.Model):
+    """Tracks authentication policy rules and security posture settings."""
+
+    AUTH_MODE_CHOICES = [
+        ('password', 'Password only'),
+        ('password_mfa', 'Password + MFA'),
+        ('sso', 'Single sign-on'),
+        ('hybrid', 'Hybrid'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=150)
+    authentication_mode = models.CharField(max_length=30, choices=AUTH_MODE_CHOICES, default='password_mfa')
+    password_min_length = models.PositiveSmallIntegerField(default=12)
+    password_history_count = models.PositiveSmallIntegerField(default=5)
+    session_timeout_minutes = models.PositiveIntegerField(default=60)
+    max_failed_attempts = models.PositiveSmallIntegerField(default=5)
+    lockout_minutes = models.PositiveIntegerField(default=15)
+    require_mfa = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        UserAccount,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='security_auth_policies_created',
+    )
+    updated_by = models.ForeignKey(
+        UserAccount,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='security_auth_policies_updated',
+    )
+
+    class Meta:
+        db_table = 'security_authentication_policies'
+        ordering = ['-updated_at', '-created_at']
+
+    def __str__(self):
+        return self.name
+
+
+class SecurityAccessControlRule(models.Model):
+    """Stores access-control rules for roles, users, or groups."""
+
+    SUBJECT_TYPE_CHOICES = [
+        ('role', 'Role'),
+        ('user', 'User'),
+        ('group', 'Group'),
+    ]
+
+    PERMISSION_LEVEL_CHOICES = [
+        ('read', 'Read'),
+        ('write', 'Write'),
+        ('admin', 'Admin'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=150)
+    subject_type = models.CharField(max_length=20, choices=SUBJECT_TYPE_CHOICES, default='role')
+    subject_name = models.CharField(max_length=150)
+    resource_name = models.CharField(max_length=150)
+    permission_level = models.CharField(max_length=20, choices=PERMISSION_LEVEL_CHOICES, default='read')
+    scope = models.CharField(max_length=120, blank=True, null=True)
+    conditions = models.TextField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        UserAccount,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='security_access_rules_created',
+    )
+    updated_by = models.ForeignKey(
+        UserAccount,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='security_access_rules_updated',
+    )
+
+    class Meta:
+        db_table = 'security_access_control_rules'
+        ordering = ['-updated_at', '-created_at']
+
+    def __str__(self):
+        return self.name
+
+
+class SecurityAuditLogEntry(models.Model):
+    """Stores security audit events for authentication and access control reviews."""
+
+    EVENT_TYPE_CHOICES = [
+        ('login_success', 'Login success'),
+        ('login_failure', 'Login failure'),
+        ('role_change', 'Role change'),
+        ('access_change', 'Access change'),
+        ('security_update', 'Security update'),
+        ('manual_note', 'Manual note'),
+    ]
+
+    SEVERITY_CHOICES = [
+        ('info', 'Info'),
+        ('warning', 'Warning'),
+        ('critical', 'Critical'),
+    ]
+
+    OUTCOME_CHOICES = [
+        ('success', 'Success'),
+        ('blocked', 'Blocked'),
+        ('failure', 'Failure'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    event_type = models.CharField(max_length=30, choices=EVENT_TYPE_CHOICES, default='manual_note')
+    actor_label = models.CharField(max_length=150)
+    target_label = models.CharField(max_length=150, blank=True, null=True)
+    action_summary = models.TextField()
+    severity = models.CharField(max_length=20, choices=SEVERITY_CHOICES, default='info')
+    outcome = models.CharField(max_length=20, choices=OUTCOME_CHOICES, default='success')
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    occurred_at = models.DateTimeField(default=timezone.now)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        UserAccount,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='security_audit_logs_created',
+    )
+    updated_by = models.ForeignKey(
+        UserAccount,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='security_audit_logs_updated',
+    )
+
+    class Meta:
+        db_table = 'security_audit_log_entries'
+        ordering = ['-occurred_at', '-updated_at', '-created_at']
+
+    def __str__(self):
+        return f"{self.event_type} - {self.actor_label}"
+
+
 class Bookmark(models.Model):
     """User bookmarks for research papers - Auto-delete after 30 days"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

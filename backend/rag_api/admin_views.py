@@ -3,7 +3,16 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.utils import timezone
 from django.db import transaction
-from .models import AdminUser, UserAccount, SystemSettings, DatabaseStructureRecord, DatabaseBackupRecord
+from .models import (
+    AdminUser,
+    UserAccount,
+    SystemSettings,
+    DatabaseStructureRecord,
+    DatabaseBackupRecord,
+    SecurityAuthenticationPolicy,
+    SecurityAccessControlRule,
+    SecurityAuditLogEntry,
+)
 from .admin_serializers import (
     AdminLoginSerializer,
     AdminUserSerializer,
@@ -14,6 +23,9 @@ from .admin_serializers import (
     SystemSettingsSerializer,
     DatabaseStructureRecordSerializer,
     DatabaseBackupRecordSerializer,
+    SecurityAuthenticationPolicySerializer,
+    SecurityAccessControlRuleSerializer,
+    SecurityAuditLogEntrySerializer,
 )
 from .permissions import require_admin_only
 
@@ -488,4 +500,256 @@ def admin_database_backup_detail_view(request, backup_id):
         return Response({
             'success': False,
             'message': f'Error updating backup record: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'POST'])
+@require_admin_only
+def admin_security_auth_policies_view(request):
+    """GET/POST /api/admin/security-authentication-policies/ - List or create policies."""
+    if request.method == 'GET':
+        records = SecurityAuthenticationPolicy.objects.all().order_by('-updated_at', '-created_at')
+        serializer = SecurityAuthenticationPolicySerializer(records, many=True)
+        return Response({
+            'success': True,
+            'records': serializer.data,
+            'count': records.count(),
+        }, status=status.HTTP_200_OK)
+
+    serializer = SecurityAuthenticationPolicySerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'message': 'Invalid input',
+            'errors': serializer.errors,
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        acting_user = getattr(request, 'authenticated_user', None)
+        record = serializer.save(created_by=acting_user, updated_by=acting_user)
+        return Response({
+            'success': True,
+            'message': 'Authentication policy created successfully',
+            'record': SecurityAuthenticationPolicySerializer(record).data,
+        }, status=status.HTTP_201_CREATED)
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'Error creating authentication policy: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'PATCH', 'DELETE'])
+@require_admin_only
+def admin_security_auth_policy_detail_view(request, policy_id):
+    """GET/PATCH/DELETE /api/admin/security-authentication-policies/<id>/"""
+    try:
+        record = SecurityAuthenticationPolicy.objects.get(id=policy_id)
+    except SecurityAuthenticationPolicy.DoesNotExist:
+        return Response({
+            'success': False,
+            'message': 'Authentication policy not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response({
+            'success': True,
+            'record': SecurityAuthenticationPolicySerializer(record).data,
+        }, status=status.HTTP_200_OK)
+
+    if request.method == 'DELETE':
+        record.delete()
+        return Response({
+            'success': True,
+            'message': 'Authentication policy deleted successfully',
+        }, status=status.HTTP_200_OK)
+
+    serializer = SecurityAuthenticationPolicySerializer(record, data=request.data, partial=True)
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'message': 'Invalid input',
+            'errors': serializer.errors,
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        acting_user = getattr(request, 'authenticated_user', None)
+        record = serializer.save(updated_by=acting_user)
+        return Response({
+            'success': True,
+            'message': 'Authentication policy updated successfully',
+            'record': SecurityAuthenticationPolicySerializer(record).data,
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'Error updating authentication policy: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'POST'])
+@require_admin_only
+def admin_security_access_rules_view(request):
+    """GET/POST /api/admin/security-access-control-rules/ - List or create access rules."""
+    if request.method == 'GET':
+        records = SecurityAccessControlRule.objects.all().order_by('-updated_at', '-created_at')
+        serializer = SecurityAccessControlRuleSerializer(records, many=True)
+        return Response({
+            'success': True,
+            'records': serializer.data,
+            'count': records.count(),
+        }, status=status.HTTP_200_OK)
+
+    serializer = SecurityAccessControlRuleSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'message': 'Invalid input',
+            'errors': serializer.errors,
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        acting_user = getattr(request, 'authenticated_user', None)
+        record = serializer.save(created_by=acting_user, updated_by=acting_user)
+        return Response({
+            'success': True,
+            'message': 'Access control rule created successfully',
+            'record': SecurityAccessControlRuleSerializer(record).data,
+        }, status=status.HTTP_201_CREATED)
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'Error creating access rule: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'PATCH', 'DELETE'])
+@require_admin_only
+def admin_security_access_rule_detail_view(request, rule_id):
+    """GET/PATCH/DELETE /api/admin/security-access-control-rules/<id>/"""
+    try:
+        record = SecurityAccessControlRule.objects.get(id=rule_id)
+    except SecurityAccessControlRule.DoesNotExist:
+        return Response({
+            'success': False,
+            'message': 'Access control rule not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response({
+            'success': True,
+            'record': SecurityAccessControlRuleSerializer(record).data,
+        }, status=status.HTTP_200_OK)
+
+    if request.method == 'DELETE':
+        record.delete()
+        return Response({
+            'success': True,
+            'message': 'Access control rule deleted successfully',
+        }, status=status.HTTP_200_OK)
+
+    serializer = SecurityAccessControlRuleSerializer(record, data=request.data, partial=True)
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'message': 'Invalid input',
+            'errors': serializer.errors,
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        acting_user = getattr(request, 'authenticated_user', None)
+        record = serializer.save(updated_by=acting_user)
+        return Response({
+            'success': True,
+            'message': 'Access control rule updated successfully',
+            'record': SecurityAccessControlRuleSerializer(record).data,
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'Error updating access rule: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'POST'])
+@require_admin_only
+def admin_security_audit_logs_view(request):
+    """GET/POST /api/admin/security-audit-logs/ - List or create audit entries."""
+    if request.method == 'GET':
+        records = SecurityAuditLogEntry.objects.all().order_by('-occurred_at', '-updated_at', '-created_at')
+        serializer = SecurityAuditLogEntrySerializer(records, many=True)
+        return Response({
+            'success': True,
+            'records': serializer.data,
+            'count': records.count(),
+        }, status=status.HTTP_200_OK)
+
+    serializer = SecurityAuditLogEntrySerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'message': 'Invalid input',
+            'errors': serializer.errors,
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        acting_user = getattr(request, 'authenticated_user', None)
+        record = serializer.save(created_by=acting_user, updated_by=acting_user)
+        return Response({
+            'success': True,
+            'message': 'Audit log entry created successfully',
+            'record': SecurityAuditLogEntrySerializer(record).data,
+        }, status=status.HTTP_201_CREATED)
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'Error creating audit log entry: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'PATCH', 'DELETE'])
+@require_admin_only
+def admin_security_audit_log_detail_view(request, log_id):
+    """GET/PATCH/DELETE /api/admin/security-audit-logs/<id>/"""
+    try:
+        record = SecurityAuditLogEntry.objects.get(id=log_id)
+    except SecurityAuditLogEntry.DoesNotExist:
+        return Response({
+            'success': False,
+            'message': 'Audit log entry not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response({
+            'success': True,
+            'record': SecurityAuditLogEntrySerializer(record).data,
+        }, status=status.HTTP_200_OK)
+
+    if request.method == 'DELETE':
+        record.delete()
+        return Response({
+            'success': True,
+            'message': 'Audit log entry deleted successfully',
+        }, status=status.HTTP_200_OK)
+
+    serializer = SecurityAuditLogEntrySerializer(record, data=request.data, partial=True)
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'message': 'Invalid input',
+            'errors': serializer.errors,
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        acting_user = getattr(request, 'authenticated_user', None)
+        record = serializer.save(updated_by=acting_user)
+        return Response({
+            'success': True,
+            'message': 'Audit log entry updated successfully',
+            'record': SecurityAuditLogEntrySerializer(record).data,
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'Error updating audit log entry: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
