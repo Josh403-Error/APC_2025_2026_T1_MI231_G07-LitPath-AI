@@ -4,7 +4,9 @@ import { useAuth } from '../../context/AuthContext';
 import {
     AlertCircle,
     CheckCircle2,
+    Database,
     Edit2,
+    HardDriveDownload,
     KeyRound,
     Loader2,
     LogOut,
@@ -17,6 +19,7 @@ import {
     UserX,
     Users,
     X,
+    Trash2,
 } from 'lucide-react';
 import { API_BASE_URL, apiHeaders } from '../../services/api';
 import { getPasswordRequirementChecks, validatePasswordStrength } from '../../lib/passwordValidation';
@@ -36,6 +39,29 @@ const emptyForm = {
     is_active: true,
     password: '',
     confirmPassword: '',
+};
+
+const emptyStructureForm = {
+    name: '',
+    schema_version: '',
+    migration_label: '',
+    change_summary: '',
+    rollback_script: '',
+    applied_at: '',
+    is_current: false,
+};
+
+const emptyBackupForm = {
+    name: '',
+    backup_type: 'full',
+    target_environment: '',
+    storage_location: '',
+    retention_days: 30,
+    size_mb: '',
+    status: 'planned',
+    notes: '',
+    backup_started_at: '',
+    backup_completed_at: '',
 };
 
 const defaultSystemSettings = {
@@ -124,6 +150,7 @@ const ITAdminDashboard = () => {
 
     const tabs = [
         { key: 'accounts', label: 'Account Management' },
+        { key: 'database', label: 'Manage Database Structure & Backups' },
         { key: 'system', label: 'System Settings' },
     ];
     const [activeTab, setActiveTab] = useState('accounts');
@@ -144,6 +171,15 @@ const ITAdminDashboard = () => {
     const [editingAccount, setEditingAccount] = useState(null);
     const [form, setForm] = useState(emptyForm);
     const [systemSettings, setSystemSettings] = useState(defaultSystemSettings);
+    const [databaseLoading, setDatabaseLoading] = useState(true);
+    const [databaseSaving, setDatabaseSaving] = useState(false);
+    const [databaseError, setDatabaseError] = useState('');
+    const [databaseStructures, setDatabaseStructures] = useState([]);
+    const [backupRecords, setBackupRecords] = useState([]);
+    const [structureForm, setStructureForm] = useState(emptyStructureForm);
+    const [backupForm, setBackupForm] = useState(emptyBackupForm);
+    const [editingStructureId, setEditingStructureId] = useState(null);
+    const [editingBackupId, setEditingBackupId] = useState(null);
 
     const showToast = (type, message) => {
         setToast({ show: true, type, message });
@@ -197,9 +233,39 @@ const ITAdminDashboard = () => {
         }
     };
 
+    const loadDatabaseAdminData = async () => {
+        setDatabaseLoading(true);
+        setDatabaseError('');
+
+        try {
+            const [structuresResponse, backupsResponse] = await Promise.all([
+                fetch(`${API_BASE_URL}/admin/database-structures/`, { headers: apiHeaders(true) }),
+                fetch(`${API_BASE_URL}/admin/database-backups/`, { headers: apiHeaders(true) }),
+            ]);
+
+            const structuresData = await parseApiResponse(structuresResponse, 'Unable to load database structures.');
+            const backupsData = await parseApiResponse(backupsResponse, 'Unable to load database backups.');
+
+            if (!structuresResponse.ok || !structuresData.success) {
+                throw new Error(structuresData.message || 'Unable to load database structures.');
+            }
+            if (!backupsResponse.ok || !backupsData.success) {
+                throw new Error(backupsData.message || 'Unable to load database backups.');
+            }
+
+            setDatabaseStructures(structuresData.records || []);
+            setBackupRecords(backupsData.records || []);
+        } catch (error) {
+            setDatabaseError(error.message || 'Unable to load database admin data.');
+        } finally {
+            setDatabaseLoading(false);
+        }
+    };
+
     useEffect(() => {
         loadAccounts();
         loadSettings();
+        loadDatabaseAdminData();
     }, []);
 
     useEffect(() => {
@@ -269,7 +335,6 @@ const ITAdminDashboard = () => {
 
         const ai = systemSettings.ai_model_settings;
         const search = systemSettings.search_settings;
-        const envConfig = systemSettings.environment_config;
 
         if (!ai.provider.trim()) {
             setSettingsError('AI provider is required.');
@@ -472,8 +537,178 @@ const ITAdminDashboard = () => {
         }
     };
 
+    const resetStructureForm = () => {
+        setStructureForm(emptyStructureForm);
+        setEditingStructureId(null);
+    };
+
+    const resetBackupForm = () => {
+        setBackupForm(emptyBackupForm);
+        setEditingBackupId(null);
+    };
+
+    const editStructure = (record) => {
+        setEditingStructureId(record.id);
+        setStructureForm({
+            name: record.name || '',
+            schema_version: record.schema_version || '',
+            migration_label: record.migration_label || '',
+            change_summary: record.change_summary || '',
+            rollback_script: record.rollback_script || '',
+            applied_at: record.applied_at ? new Date(record.applied_at).toISOString().slice(0, 16) : '',
+            is_current: Boolean(record.is_current),
+        });
+    };
+
+    const editBackup = (record) => {
+        setEditingBackupId(record.id);
+        setBackupForm({
+            name: record.name || '',
+            backup_type: record.backup_type || 'full',
+            target_environment: record.target_environment || '',
+            storage_location: record.storage_location || '',
+            retention_days: Number(record.retention_days || 30),
+            size_mb: record.size_mb ?? '',
+            status: record.status || 'planned',
+            notes: record.notes || '',
+            backup_started_at: record.backup_started_at ? new Date(record.backup_started_at).toISOString().slice(0, 16) : '',
+            backup_completed_at: record.backup_completed_at ? new Date(record.backup_completed_at).toISOString().slice(0, 16) : '',
+        });
+    };
+
+    const submitStructure = async (event) => {
+        event.preventDefault();
+        setDatabaseSaving(true);
+        setDatabaseError('');
+
+        try {
+            const payload = {
+                ...structureForm,
+                applied_at: structureForm.applied_at ? new Date(structureForm.applied_at).toISOString() : null,
+            };
+
+            const response = await fetch(
+                editingStructureId
+                    ? `${API_BASE_URL}/admin/database-structures/${editingStructureId}/`
+                    : `${API_BASE_URL}/admin/database-structures/`,
+                {
+                    method: editingStructureId ? 'PATCH' : 'POST',
+                    headers: apiHeaders(true),
+                    body: JSON.stringify(payload),
+                }
+            );
+
+            const data = await parseApiResponse(response, 'Unable to save structure record.');
+            if (!response.ok || !data.success) {
+                const errors = data.errors
+                    ? Object.values(data.errors).flat().join(' ')
+                    : data.message || 'Unable to save structure record.';
+                throw new Error(errors);
+            }
+
+            showToast('success', editingStructureId ? 'Structure record updated.' : 'Structure record created.');
+            resetStructureForm();
+            await loadDatabaseAdminData();
+        } catch (error) {
+            setDatabaseError(error.message || 'Unable to save structure record.');
+        } finally {
+            setDatabaseSaving(false);
+        }
+    };
+
+    const submitBackup = async (event) => {
+        event.preventDefault();
+        setDatabaseSaving(true);
+        setDatabaseError('');
+
+        try {
+            const payload = {
+                ...backupForm,
+                retention_days: Number(backupForm.retention_days),
+                size_mb: backupForm.size_mb === '' ? null : Number(backupForm.size_mb),
+                backup_started_at: backupForm.backup_started_at ? new Date(backupForm.backup_started_at).toISOString() : null,
+                backup_completed_at: backupForm.backup_completed_at ? new Date(backupForm.backup_completed_at).toISOString() : null,
+            };
+
+            const response = await fetch(
+                editingBackupId
+                    ? `${API_BASE_URL}/admin/database-backups/${editingBackupId}/`
+                    : `${API_BASE_URL}/admin/database-backups/`,
+                {
+                    method: editingBackupId ? 'PATCH' : 'POST',
+                    headers: apiHeaders(true),
+                    body: JSON.stringify(payload),
+                }
+            );
+
+            const data = await parseApiResponse(response, 'Unable to save backup record.');
+            if (!response.ok || !data.success) {
+                const errors = data.errors
+                    ? Object.values(data.errors).flat().join(' ')
+                    : data.message || 'Unable to save backup record.';
+                throw new Error(errors);
+            }
+
+            showToast('success', editingBackupId ? 'Backup record updated.' : 'Backup record created.');
+            resetBackupForm();
+            await loadDatabaseAdminData();
+        } catch (error) {
+            setDatabaseError(error.message || 'Unable to save backup record.');
+        } finally {
+            setDatabaseSaving(false);
+        }
+    };
+
+    const deleteStructure = async (recordId) => {
+        if (!window.confirm('Delete this structure record?')) return;
+
+        setDatabaseSaving(true);
+        setDatabaseError('');
+        try {
+            const response = await fetch(`${API_BASE_URL}/admin/database-structures/${recordId}/`, {
+                method: 'DELETE',
+                headers: apiHeaders(true),
+            });
+            const data = await parseApiResponse(response, 'Unable to delete structure record.');
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Unable to delete structure record.');
+            }
+            showToast('success', 'Structure record deleted.');
+            await loadDatabaseAdminData();
+        } catch (error) {
+            setDatabaseError(error.message || 'Unable to delete structure record.');
+        } finally {
+            setDatabaseSaving(false);
+        }
+    };
+
+    const deleteBackup = async (recordId) => {
+        if (!window.confirm('Delete this backup record?')) return;
+
+        setDatabaseSaving(true);
+        setDatabaseError('');
+        try {
+            const response = await fetch(`${API_BASE_URL}/admin/database-backups/${recordId}/`, {
+                method: 'DELETE',
+                headers: apiHeaders(true),
+            });
+            const data = await parseApiResponse(response, 'Unable to delete backup record.');
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Unable to delete backup record.');
+            }
+            showToast('success', 'Backup record deleted.');
+            await loadDatabaseAdminData();
+        } catch (error) {
+            setDatabaseError(error.message || 'Unable to delete backup record.');
+        } finally {
+            setDatabaseSaving(false);
+        }
+    };
+
     const passwordChecks = getPasswordRequirementChecks(form.password || '');
     const configuredIntegrations = Object.values(systemSettings.environment_config || {}).filter(Boolean).length;
+    const currentStructure = databaseStructures.find((record) => record.is_current);
+    const completedBackups = backupRecords.filter((record) => record.status === 'completed').length;
 
     return (
         <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#f8fafc,_#eef2ff_38%,_#e2e8f0_100%)] text-slate-900">
@@ -525,25 +760,52 @@ const ITAdminDashboard = () => {
 
                     <div className="border-b border-slate-200/70 bg-slate-50/60 px-6 py-4">
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
-                            <span className="inline-flex items-center gap-2 font-semibold text-slate-900">
-                                <Users className="h-4 w-4 text-slate-400" />
-                                Total {metrics.total}
-                            </span>
-                            <span className="text-slate-300">•</span>
-                            <span className="inline-flex items-center gap-2 font-semibold text-emerald-800">
-                                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                                Active {metrics.active}
-                            </span>
-                            <span className="text-slate-300">•</span>
-                            <span className="inline-flex items-center gap-2 font-semibold text-rose-800">
-                                <ShieldCheck className="h-4 w-4 text-rose-600" />
-                                IT admins {metrics.admins}
-                            </span>
-                            <span className="text-slate-300">•</span>
-                            <span className="inline-flex items-center gap-2 font-semibold text-sky-800">
-                                <UserRoundCog className="h-4 w-4 text-sky-600" />
-                                Library admins {metrics.staff}
-                            </span>
+                            {activeTab === 'accounts' ? (
+                                <>
+                                    <span className="inline-flex items-center gap-2 font-semibold text-slate-900">
+                                        <Users className="h-4 w-4 text-slate-400" />
+                                        Total {metrics.total}
+                                    </span>
+                                    <span className="text-slate-300">•</span>
+                                    <span className="inline-flex items-center gap-2 font-semibold text-emerald-800">
+                                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                                        Active {metrics.active}
+                                    </span>
+                                    <span className="text-slate-300">•</span>
+                                    <span className="inline-flex items-center gap-2 font-semibold text-rose-800">
+                                        <ShieldCheck className="h-4 w-4 text-rose-600" />
+                                        IT admins {metrics.admins}
+                                    </span>
+                                    <span className="text-slate-300">•</span>
+                                    <span className="inline-flex items-center gap-2 font-semibold text-sky-800">
+                                        <UserRoundCog className="h-4 w-4 text-sky-600" />
+                                        Library admins {metrics.staff}
+                                    </span>
+                                </>
+                            ) : activeTab === 'database' ? (
+                                <>
+                                    <span className="inline-flex items-center gap-2 font-semibold text-slate-900">
+                                        <Database className="h-4 w-4 text-slate-400" />
+                                        Structures {databaseStructures.length}
+                                    </span>
+                                    <span className="text-slate-300">•</span>
+                                    <span className="inline-flex items-center gap-2 font-semibold text-sky-800">
+                                        <HardDriveDownload className="h-4 w-4 text-sky-600" />
+                                        Backups {backupRecords.length}
+                                    </span>
+                                    <span className="text-slate-300">•</span>
+                                    <span className="inline-flex items-center gap-2 font-semibold text-emerald-800">
+                                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                                        Completed {completedBackups}
+                                    </span>
+                                    <span className="text-slate-300">•</span>
+                                    <span className="font-semibold text-slate-700">
+                                        Current schema: {currentStructure?.schema_version || 'Not set'}
+                                    </span>
+                                </>
+                            ) : (
+                                <span className="font-semibold text-slate-700">System settings administration</span>
+                            )}
                         </div>
                     </div>
 
@@ -709,6 +971,362 @@ const ITAdminDashboard = () => {
                                         </div>
                                     )}
                                 </div>
+                            </>
+                        ) : activeTab === 'database' ? (
+                            <>
+                                <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                                    <div>
+                                        <h2 className="text-2xl font-black tracking-tight text-slate-900">Manage Database Structure and Backups</h2>
+                                        <p className="mt-1 text-sm text-slate-600">
+                                            Maintain schema history records and backup lifecycle entries from one operational console.
+                                        </p>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={loadDatabaseAdminData}
+                                        className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50"
+                                    >
+                                        <RefreshCw className={`h-4 w-4 ${databaseLoading ? 'animate-spin' : ''}`} />
+                                        Refresh
+                                    </button>
+                                </div>
+
+                                {databaseError ? (
+                                    <div className="mb-5 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                                        <span>{databaseError}</span>
+                                    </div>
+                                ) : null}
+
+                                {databaseLoading ? (
+                                    <div className="mt-2 flex min-h-[320px] items-center justify-center rounded-[1.75rem] border border-slate-200 bg-white shadow-sm">
+                                        <div className="flex items-center gap-3 text-slate-500">
+                                            <Loader2 className="h-5 w-5 animate-spin" />
+                                            Loading database records...
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="grid gap-6 xl:grid-cols-2">
+                                        <section className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+                                            <div className="mb-4">
+                                                <h3 className="text-lg font-black tracking-tight text-slate-900">Database Structure Registry</h3>
+                                                <p className="mt-1 text-sm text-slate-600">Track schema versions, migration labels, and rollback notes.</p>
+                                            </div>
+
+                                            <form onSubmit={submitStructure} className="grid gap-3">
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    <input
+                                                        value={structureForm.name}
+                                                        onChange={(event) => setStructureForm({ ...structureForm, name: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="Record name"
+                                                        required
+                                                    />
+                                                    <input
+                                                        value={structureForm.schema_version}
+                                                        onChange={(event) => setStructureForm({ ...structureForm, schema_version: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="Schema version"
+                                                        required
+                                                    />
+                                                </div>
+                                                <input
+                                                    value={structureForm.migration_label}
+                                                    onChange={(event) => setStructureForm({ ...structureForm, migration_label: event.target.value })}
+                                                    className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                    placeholder="Migration label (optional)"
+                                                />
+                                                <textarea
+                                                    value={structureForm.change_summary}
+                                                    onChange={(event) => setStructureForm({ ...structureForm, change_summary: event.target.value })}
+                                                    className="min-h-[90px] rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                    placeholder="Change summary"
+                                                />
+                                                <textarea
+                                                    value={structureForm.rollback_script}
+                                                    onChange={(event) => setStructureForm({ ...structureForm, rollback_script: event.target.value })}
+                                                    className="min-h-[90px] rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                    placeholder="Rollback script notes"
+                                                />
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    <input
+                                                        type="datetime-local"
+                                                        value={structureForm.applied_at}
+                                                        onChange={(event) => setStructureForm({ ...structureForm, applied_at: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                    />
+                                                    <label className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700">
+                                                        Mark as current schema
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={structureForm.is_current}
+                                                            onChange={(event) => setStructureForm({ ...structureForm, is_current: event.target.checked })}
+                                                            className="h-5 w-5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                                                        />
+                                                    </label>
+                                                </div>
+
+                                                <div className="flex flex-wrap justify-end gap-2">
+                                                    {editingStructureId ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={resetStructureForm}
+                                                            className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                                                        >
+                                                            Cancel edit
+                                                        </button>
+                                                    ) : null}
+                                                    <button
+                                                        type="submit"
+                                                        disabled={databaseSaving}
+                                                        className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-70"
+                                                    >
+                                                        {databaseSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                                        {editingStructureId ? 'Update record' : 'Create record'}
+                                                    </button>
+                                                </div>
+                                            </form>
+
+                                            <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
+                                                {databaseStructures.length === 0 ? (
+                                                    <div className="flex min-h-[180px] flex-col items-center justify-center px-6 py-10 text-center">
+                                                        <div className="rounded-full bg-slate-100 p-3 text-slate-500">
+                                                            <Database className="h-6 w-6" />
+                                                        </div>
+                                                        <h4 className="mt-4 text-base font-bold text-slate-900">No database structure records yet</h4>
+                                                        <p className="mt-1 max-w-md text-sm text-slate-500">
+                                                            Create the first schema entry to start tracking version history, migration labels, and rollback notes.
+                                                        </p>
+                                                    </div>
+                                                ) : (
+                                                    <table className="min-w-full divide-y divide-slate-200 text-sm">
+                                                        <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                                                            <tr>
+                                                                <th className="px-4 py-3">Version</th>
+                                                                <th className="px-4 py-3">Migration</th>
+                                                                <th className="px-4 py-3">Current</th>
+                                                                <th className="px-4 py-3 text-right">Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-100 bg-white">
+                                                            {databaseStructures.map((record) => (
+                                                                <tr key={record.id}>
+                                                                    <td className="px-4 py-3">
+                                                                        <p className="font-semibold text-slate-900">{record.schema_version}</p>
+                                                                        <p className="text-xs text-slate-500">{record.name}</p>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-slate-600">{record.migration_label || '-'}</td>
+                                                                    <td className="px-4 py-3">
+                                                                        {record.is_current ? (
+                                                                            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Current</span>
+                                                                        ) : (
+                                                                            <span className="text-xs text-slate-500">No</span>
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="px-4 py-3">
+                                                                        <div className="flex justify-end gap-2">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => editStructure(record)}
+                                                                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                                                            >
+                                                                                <Edit2 className="h-3.5 w-3.5" />
+                                                                                Edit
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => deleteStructure(record.id)}
+                                                                                className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                                                                            >
+                                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                                                Delete
+                                                                            </button>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                )}
+                                            </div>
+                                        </section>
+
+                                        <section className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+                                            <div className="mb-4">
+                                                <h3 className="text-lg font-black tracking-tight text-slate-900">Backup Lifecycle Records</h3>
+                                                <p className="mt-1 text-sm text-slate-600">Define and update backup policies, targets, and execution states.</p>
+                                            </div>
+
+                                            <form onSubmit={submitBackup} className="grid gap-3">
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    <input
+                                                        value={backupForm.name}
+                                                        onChange={(event) => setBackupForm({ ...backupForm, name: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="Backup name"
+                                                        required
+                                                    />
+                                                    <select
+                                                        value={backupForm.backup_type}
+                                                        onChange={(event) => setBackupForm({ ...backupForm, backup_type: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none"
+                                                    >
+                                                        <option value="full">Full</option>
+                                                        <option value="incremental">Incremental</option>
+                                                        <option value="schema">Schema only</option>
+                                                    </select>
+                                                </div>
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    <input
+                                                        value={backupForm.target_environment}
+                                                        onChange={(event) => setBackupForm({ ...backupForm, target_environment: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="Environment (prod/staging/local)"
+                                                    />
+                                                    <input
+                                                        value={backupForm.storage_location}
+                                                        onChange={(event) => setBackupForm({ ...backupForm, storage_location: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="Storage location"
+                                                        required
+                                                    />
+                                                </div>
+                                                <div className="grid gap-3 sm:grid-cols-3">
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        max="3650"
+                                                        value={backupForm.retention_days}
+                                                        onChange={(event) => setBackupForm({ ...backupForm, retention_days: Number(event.target.value) })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="Retention days"
+                                                    />
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        step="0.01"
+                                                        value={backupForm.size_mb}
+                                                        onChange={(event) => setBackupForm({ ...backupForm, size_mb: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="Size (MB)"
+                                                    />
+                                                    <select
+                                                        value={backupForm.status}
+                                                        onChange={(event) => setBackupForm({ ...backupForm, status: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none"
+                                                    >
+                                                        <option value="planned">Planned</option>
+                                                        <option value="running">Running</option>
+                                                        <option value="completed">Completed</option>
+                                                        <option value="failed">Failed</option>
+                                                    </select>
+                                                </div>
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    <input
+                                                        type="datetime-local"
+                                                        value={backupForm.backup_started_at}
+                                                        onChange={(event) => setBackupForm({ ...backupForm, backup_started_at: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                    />
+                                                    <input
+                                                        type="datetime-local"
+                                                        value={backupForm.backup_completed_at}
+                                                        onChange={(event) => setBackupForm({ ...backupForm, backup_completed_at: event.target.value })}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                    />
+                                                </div>
+                                                <textarea
+                                                    value={backupForm.notes}
+                                                    onChange={(event) => setBackupForm({ ...backupForm, notes: event.target.value })}
+                                                    className="min-h-[90px] rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                    placeholder="Notes"
+                                                />
+
+                                                <div className="flex flex-wrap justify-end gap-2">
+                                                    {editingBackupId ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={resetBackupForm}
+                                                            className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                                                        >
+                                                            Cancel edit
+                                                        </button>
+                                                    ) : null}
+                                                    <button
+                                                        type="submit"
+                                                        disabled={databaseSaving}
+                                                        className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-70"
+                                                    >
+                                                        {databaseSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                                        {editingBackupId ? 'Update record' : 'Create record'}
+                                                    </button>
+                                                </div>
+                                            </form>
+
+                                            <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
+                                                {backupRecords.length === 0 ? (
+                                                    <div className="flex min-h-[180px] flex-col items-center justify-center px-6 py-10 text-center">
+                                                        <div className="rounded-full bg-slate-100 p-3 text-slate-500">
+                                                            <HardDriveDownload className="h-6 w-6" />
+                                                        </div>
+                                                        <h4 className="mt-4 text-base font-bold text-slate-900">No backup records yet</h4>
+                                                        <p className="mt-1 max-w-md text-sm text-slate-500">
+                                                            Create the first backup entry to document your backup plan, retention policy, and execution status.
+                                                        </p>
+                                                    </div>
+                                                ) : (
+                                                    <table className="min-w-full divide-y divide-slate-200 text-sm">
+                                                        <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                                                            <tr>
+                                                                <th className="px-4 py-3">Backup</th>
+                                                                <th className="px-4 py-3">Type</th>
+                                                                <th className="px-4 py-3">Status</th>
+                                                                <th className="px-4 py-3 text-right">Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-100 bg-white">
+                                                            {backupRecords.map((record) => (
+                                                                <tr key={record.id}>
+                                                                    <td className="px-4 py-3">
+                                                                        <p className="font-semibold text-slate-900">{record.name}</p>
+                                                                        <p className="text-xs text-slate-500">{record.storage_location}</p>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-slate-600">{record.backup_type}</td>
+                                                                    <td className="px-4 py-3">
+                                                                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${record.status === 'completed' ? 'border border-emerald-200 bg-emerald-50 text-emerald-700' : record.status === 'failed' ? 'border border-rose-200 bg-rose-50 text-rose-700' : 'border border-slate-200 bg-slate-50 text-slate-700'}`}>
+                                                                            {record.status}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-4 py-3">
+                                                                        <div className="flex justify-end gap-2">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => editBackup(record)}
+                                                                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                                                            >
+                                                                                <Edit2 className="h-3.5 w-3.5" />
+                                                                                Edit
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => deleteBackup(record.id)}
+                                                                                className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                                                                            >
+                                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                                                Delete
+                                                                            </button>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                )}
+                                            </div>
+                                        </section>
+                                    </div>
+                                )}
                             </>
                         ) : activeTab === 'system' ? (
                             <>

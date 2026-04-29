@@ -1,5 +1,11 @@
 from rest_framework import serializers
-from .models import AdminUser, UserAccount, UserRole, SystemSettings
+from .models import (
+    AdminUser,
+    UserAccount,
+    SystemSettings,
+    DatabaseStructureRecord,
+    DatabaseBackupRecord,
+)
 from .password_validation import validate_password_strength
 from .system_settings import (
     ALLOWED_AI_PROVIDERS,
@@ -223,3 +229,77 @@ class SystemSettingsSerializer(serializers.ModelSerializer):
             instance.updated_by = request.authenticated_user
         instance.save()
         return instance
+
+
+class DatabaseStructureRecordSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    updated_by_name = serializers.CharField(source='updated_by.username', read_only=True)
+
+    class Meta:
+        model = DatabaseStructureRecord
+        fields = [
+            'id',
+            'name',
+            'schema_version',
+            'migration_label',
+            'change_summary',
+            'rollback_script',
+            'applied_at',
+            'is_current',
+            'created_at',
+            'updated_at',
+            'created_by',
+            'updated_by',
+            'created_by_name',
+            'updated_by_name',
+        ]
+        read_only_fields = [
+            'id',
+            'created_at',
+            'updated_at',
+            'created_by',
+            'updated_by',
+            'created_by_name',
+            'updated_by_name',
+        ]
+
+
+class DatabaseBackupRecordSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    updated_by_name = serializers.CharField(source='updated_by.username', read_only=True)
+
+    class Meta:
+        model = DatabaseBackupRecord
+        fields = [
+            'id',
+            'name',
+            'backup_type',
+            'target_environment',
+            'storage_location',
+            'retention_days',
+            'size_mb',
+            'status',
+            'notes',
+            'backup_started_at',
+            'backup_completed_at',
+            'created_at',
+            'updated_at',
+            'created_by',
+            'updated_by',
+            'created_by_name',
+            'updated_by_name',
+        ]
+        read_only_fields = [
+            'id',
+            'created_at',
+            'updated_at',
+            'created_by',
+            'updated_by',
+            'created_by_name',
+            'updated_by_name',
+        ]
+
+    def validate_retention_days(self, value):
+        if value < 1 or value > 3650:
+            raise serializers.ValidationError('Retention days must be between 1 and 3650.')
+        return value

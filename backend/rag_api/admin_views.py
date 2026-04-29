@@ -2,7 +2,8 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from django.utils import timezone
-from .models import AdminUser, UserAccount, SystemSettings
+from django.db import transaction
+from .models import AdminUser, UserAccount, SystemSettings, DatabaseStructureRecord, DatabaseBackupRecord
 from .admin_serializers import (
     AdminLoginSerializer,
     AdminUserSerializer,
@@ -11,6 +12,8 @@ from .admin_serializers import (
     UserAccountAdminCreateSerializer,
     UserAccountAdminUpdateSerializer,
     SystemSettingsSerializer,
+    DatabaseStructureRecordSerializer,
+    DatabaseBackupRecordSerializer,
 )
 from .permissions import require_admin_only
 
@@ -286,4 +289,203 @@ def system_settings_view(request):
         return Response({
             'success': False,
             'message': f'Error updating system settings: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'POST'])
+@require_admin_only
+def admin_database_structures_view(request):
+    """
+    GET /api/admin/database-structures/ - List all structure records
+    POST /api/admin/database-structures/ - Create a structure record
+    """
+    if request.method == 'GET':
+        records = DatabaseStructureRecord.objects.all().order_by('-updated_at', '-created_at')
+        serializer = DatabaseStructureRecordSerializer(records, many=True)
+        return Response({
+            'success': True,
+            'records': serializer.data,
+            'count': records.count(),
+        }, status=status.HTTP_200_OK)
+
+    serializer = DatabaseStructureRecordSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'message': 'Invalid input',
+            'errors': serializer.errors,
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        acting_user = getattr(request, 'authenticated_user', None)
+        with transaction.atomic():
+            record = serializer.save(created_by=acting_user, updated_by=acting_user)
+            if record.is_current:
+                DatabaseStructureRecord.objects.exclude(id=record.id).update(is_current=False)
+        return Response({
+            'success': True,
+            'message': 'Database structure record created successfully',
+            'record': DatabaseStructureRecordSerializer(record).data,
+        }, status=status.HTTP_201_CREATED)
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'Error creating structure record: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'PATCH', 'DELETE'])
+@require_admin_only
+def admin_database_structure_detail_view(request, record_id):
+    """
+    GET /api/admin/database-structures/<record_id>/ - Get one structure record
+    PATCH /api/admin/database-structures/<record_id>/ - Update one structure record
+    DELETE /api/admin/database-structures/<record_id>/ - Delete one structure record
+    """
+    try:
+        record = DatabaseStructureRecord.objects.get(id=record_id)
+    except DatabaseStructureRecord.DoesNotExist:
+        return Response({
+            'success': False,
+            'message': 'Database structure record not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response({
+            'success': True,
+            'record': DatabaseStructureRecordSerializer(record).data,
+        }, status=status.HTTP_200_OK)
+
+    if request.method == 'DELETE':
+        record.delete()
+        return Response({
+            'success': True,
+            'message': 'Database structure record deleted successfully',
+        }, status=status.HTTP_200_OK)
+
+    serializer = DatabaseStructureRecordSerializer(record, data=request.data, partial=True)
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'message': 'Invalid input',
+            'errors': serializer.errors,
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        acting_user = getattr(request, 'authenticated_user', None)
+        with transaction.atomic():
+            record = serializer.save(updated_by=acting_user)
+            if record.is_current:
+                DatabaseStructureRecord.objects.exclude(id=record.id).update(is_current=False)
+        return Response({
+            'success': True,
+            'message': 'Database structure record updated successfully',
+            'record': DatabaseStructureRecordSerializer(record).data,
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'Error updating structure record: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'POST'])
+@require_admin_only
+def admin_database_backups_view(request):
+    """
+    GET /api/admin/database-backups/ - List all backup records
+    POST /api/admin/database-backups/ - Create a backup record
+    """
+    if request.method == 'GET':
+        records = DatabaseBackupRecord.objects.all().order_by('-updated_at', '-created_at')
+        serializer = DatabaseBackupRecordSerializer(records, many=True)
+        return Response({
+            'success': True,
+            'records': serializer.data,
+            'count': records.count(),
+        }, status=status.HTTP_200_OK)
+
+    serializer = DatabaseBackupRecordSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'message': 'Invalid input',
+            'errors': serializer.errors,
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        acting_user = getattr(request, 'authenticated_user', None)
+        record = serializer.save(created_by=acting_user, updated_by=acting_user)
+        return Response({
+            'success': True,
+            'message': 'Database backup record created successfully',
+            'record': DatabaseBackupRecordSerializer(record).data,
+        }, status=status.HTTP_201_CREATED)
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'Error creating backup record: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'PATCH', 'DELETE'])
+@require_admin_only
+def admin_database_backup_detail_view(request, backup_id):
+    """
+    GET /api/admin/database-backups/<backup_id>/ - Get one backup record
+    PATCH /api/admin/database-backups/<backup_id>/ - Update one backup record
+    DELETE /api/admin/database-backups/<backup_id>/ - Delete one backup record
+    """
+    try:
+        record = DatabaseBackupRecord.objects.get(id=backup_id)
+    except DatabaseBackupRecord.DoesNotExist:
+        return Response({
+            'success': False,
+            'message': 'Database backup record not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response({
+            'success': True,
+            'record': DatabaseBackupRecordSerializer(record).data,
+        }, status=status.HTTP_200_OK)
+
+    if request.method == 'DELETE':
+        record.delete()
+        return Response({
+            'success': True,
+            'message': 'Database backup record deleted successfully',
+        }, status=status.HTTP_200_OK)
+
+    serializer = DatabaseBackupRecordSerializer(record, data=request.data, partial=True)
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'message': 'Invalid input',
+            'errors': serializer.errors,
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        acting_user = getattr(request, 'authenticated_user', None)
+        record = serializer.save(updated_by=acting_user)
+
+        # Keep lifecycle timestamps consistent with state transitions.
+        if record.status == 'running' and not record.backup_started_at:
+            record.backup_started_at = timezone.now()
+            record.save(update_fields=['backup_started_at', 'updated_at'])
+        elif record.status == 'completed' and not record.backup_completed_at:
+            now = timezone.now()
+            record.backup_started_at = record.backup_started_at or now
+            record.backup_completed_at = now
+            record.save(update_fields=['backup_started_at', 'backup_completed_at', 'updated_at'])
+
+        return Response({
+            'success': True,
+            'message': 'Database backup record updated successfully',
+            'record': DatabaseBackupRecordSerializer(record).data,
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'Error updating backup record: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

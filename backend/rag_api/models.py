@@ -246,6 +246,94 @@ class SystemSettings(models.Model):
         return 'System settings'
 
 
+class DatabaseStructureRecord(models.Model):
+    """Tracks schema-level changes and migration history metadata."""
+
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=150)
+    schema_version = models.CharField(max_length=50)
+    migration_label = models.CharField(max_length=120, blank=True, null=True)
+    change_summary = models.TextField(blank=True, null=True)
+    rollback_script = models.TextField(blank=True, null=True)
+    applied_at = models.DateTimeField(blank=True, null=True)
+    is_current = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        UserAccount,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='db_structures_created',
+    )
+    updated_by = models.ForeignKey(
+        UserAccount,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='db_structures_updated',
+    )
+
+    class Meta:
+        db_table = 'database_structure_records'
+        ordering = ['-updated_at', '-created_at']
+
+    def __str__(self):
+        return f"{self.name} ({self.schema_version})"
+
+
+class DatabaseBackupRecord(models.Model):
+    """Stores database backup plans/history managed by IT administrators."""
+
+    BACKUP_TYPE_CHOICES = [
+        ('full', 'Full'),
+        ('incremental', 'Incremental'),
+        ('schema', 'Schema only'),
+    ]
+
+    STATUS_CHOICES = [
+        ('planned', 'Planned'),
+        ('running', 'Running'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+    ]
+
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=150)
+    backup_type = models.CharField(max_length=20, choices=BACKUP_TYPE_CHOICES, default='full')
+    target_environment = models.CharField(max_length=60, blank=True, null=True)
+    storage_location = models.CharField(max_length=255)
+    retention_days = models.PositiveIntegerField(default=30)
+    size_mb = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='planned')
+    notes = models.TextField(blank=True, null=True)
+    backup_started_at = models.DateTimeField(blank=True, null=True)
+    backup_completed_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        UserAccount,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='db_backups_created',
+    )
+    updated_by = models.ForeignKey(
+        UserAccount,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='db_backups_updated',
+    )
+
+    class Meta:
+        db_table = 'database_backup_records'
+        ordering = ['-updated_at', '-created_at']
+
+    def __str__(self):
+        return f"{self.name} [{self.backup_type}]"
+
+
 class Bookmark(models.Model):
     """User bookmarks for research papers - Auto-delete after 30 days"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
