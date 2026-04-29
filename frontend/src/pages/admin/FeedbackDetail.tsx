@@ -12,6 +12,7 @@ const FeedbackDetail = () => {
     const [feedback, setFeedback] = useState(null);
     const [loading, setLoading] = useState(true);
     const [toast, setToast] = useState({ show: false, message: '', type: 'error' });
+    const [showEditHistory, setShowEditHistory] = useState(false);
     const [editForm, setEditForm] = useState({
         status: '',
         admin_category: '',
@@ -48,6 +49,12 @@ const FeedbackDetail = () => {
     const showLocalToast = (message, type = 'error') => {
         setToast({ show: true, message, type });
         setTimeout(() => setToast({ show: false, message: '', type: 'error' }), 4000);
+    };
+
+    const formatAuditValue = (value) => {
+        if (value === null || value === undefined || value === '') return '—';
+        if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+        return String(value);
     };
 
     useEffect(() => {
@@ -235,6 +242,62 @@ const FeedbackDetail = () => {
                             Submitted: {new Date(feedback.created_at).toLocaleString()}
                         </span>
                     </div>
+
+                    <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 shadow-sm flex items-start justify-between gap-3">
+                        <div>
+                            <p className="text-xs font-bold uppercase tracking-wider text-blue-700">Last edited</p>
+                            <p className="mt-1 text-sm font-medium text-gray-800">
+                                {feedback.last_edited_by_name
+                                    ? `${feedback.last_edited_by_name}${feedback.last_edited_by ? ` (ID: ${feedback.last_edited_by})` : ''}`
+                                    : 'No edits recorded yet'}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                                {feedback.last_edited_at
+                                    ? new Date(feedback.last_edited_at).toLocaleString()
+                                    : 'Timestamp will appear after the first edit'}
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setShowEditHistory((prev) => !prev)}
+                            className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
+                        >
+                            {showEditHistory ? 'Hide history' : 'View history'}
+                        </button>
+                    </div>
+
+                    {showEditHistory && (
+                        <div className="mb-4 rounded-xl border border-blue-100 bg-white p-4 shadow-sm max-h-72 overflow-y-auto space-y-3">
+                            {Array.isArray(feedback.edit_history) && feedback.edit_history.length > 0 ? (
+                                [...feedback.edit_history].reverse().map((entry, index) => (
+                                    <div key={`${entry.edited_at || index}-${index}`} className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <p className="font-semibold text-gray-800">
+                                                {entry.edited_by_name || 'Unknown editor'}
+                                                {entry.edited_by_id ? ` (ID: ${entry.edited_by_id})` : ''}
+                                            </p>
+                                            <p className="text-xs text-gray-500">
+                                                {entry.edited_at ? new Date(entry.edited_at).toLocaleString() : '—'}
+                                            </p>
+                                        </div>
+                                        <div className="mt-2 space-y-2">
+                                            {(entry.changes || []).map((change, changeIndex) => (
+                                                <div key={`${change.field || changeIndex}-${changeIndex}`} className="rounded-md bg-white px-3 py-2 text-xs text-gray-700 border border-gray-200">
+                                                    <p className="font-semibold text-gray-800">{change.label || change.field || 'Field'}</p>
+                                                    <p>From: {formatAuditValue(change.old_value)}</p>
+                                                    <p>To: {formatAuditValue(change.new_value)}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="rounded-lg border border-dashed border-blue-200 bg-blue-50 px-3 py-4 text-xs text-gray-500">
+                                    No edit history yet.
+                                </p>
+                            )}
+                        </div>
+                    )}
 
                     {/* Two Column Layout */}
                     <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-0">

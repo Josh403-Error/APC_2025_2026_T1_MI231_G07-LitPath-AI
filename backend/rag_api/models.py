@@ -752,6 +752,17 @@ class CSMFeedback(models.Model):
     # Feasibility Check
     is_doable = models.BooleanField(null=True, blank=True)
     feasibility_remarks = models.TextField(blank=True, null=True)
+
+    # Edit audit trail
+    last_edited_by = models.ForeignKey(
+        UserAccount,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='edited_csm_feedback',
+    )
+    last_edited_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    edit_history = models.JSONField(default=list, blank=True)
     
     class Meta:
         db_table = 'csm_feedback'

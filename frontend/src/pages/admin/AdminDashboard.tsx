@@ -143,6 +143,7 @@ const AdminDashboard = () => {
     const [selectedFeedback, setSelectedFeedback] = useState(null);
     const [showFeedbackModal, setShowFeedbackModal] = useState(false);
     const [isEditingFeedback, setIsEditingFeedback] = useState(false);
+    const [showFeedbackHistory, setShowFeedbackHistory] = useState(false);
     const [feedbackEditForm, setFeedbackEditForm] = useState({
         status: '',
         admin_category: '',
@@ -1046,6 +1047,7 @@ const AdminDashboard = () => {
             is_doable: feedback.is_doable,
             feasibility_remarks: feedback.feasibility_remarks || ''
         });
+        setShowFeedbackHistory(false);
         setShowFeedbackModal(true);
     };
 
@@ -1102,6 +1104,12 @@ const AdminDashboard = () => {
             console.error(error);
             showToast('Failed to update feedback.', 'error');
         }
+    };
+
+    const formatAuditValue = (value) => {
+        if (value === null || value === undefined || value === '') return '—';
+        if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+        return String(value);
     };
 
 
@@ -2409,6 +2417,64 @@ const AdminDashboard = () => {
                                         <h3 className="text-l font-bold text-gray-800">Analysis & Action</h3>
                                     </div>
                                     <div className="p-4 flex-1 overflow-y-auto space-y-6">
+                                        <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4 shadow-sm">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <p className="text-xs font-bold uppercase tracking-wider text-blue-700">Last edited</p>
+                                                    <p className="mt-1 text-sm font-medium text-gray-800">
+                                                        {selectedFeedback.last_edited_by_name
+                                                            ? `${selectedFeedback.last_edited_by_name}${selectedFeedback.last_edited_by ? ` (ID: ${selectedFeedback.last_edited_by})` : ''}`
+                                                            : 'No edits recorded yet'}
+                                                    </p>
+                                                    <p className="text-xs text-gray-500">
+                                                        {selectedFeedback.last_edited_at
+                                                            ? new Date(selectedFeedback.last_edited_at).toLocaleString()
+                                                            : 'Timestamp will appear after the first edit'}
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowFeedbackHistory((prev) => !prev)}
+                                                    className="shrink-0 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
+                                                >
+                                                    {showFeedbackHistory ? 'Hide history' : 'View history'}
+                                                </button>
+                                            </div>
+
+                                            {showFeedbackHistory && (
+                                                <div className="mt-4 max-h-72 space-y-3 overflow-y-auto pr-1">
+                                                    {Array.isArray(selectedFeedback.edit_history) && selectedFeedback.edit_history.length > 0 ? (
+                                                        [...selectedFeedback.edit_history].reverse().map((entry, index) => (
+                                                            <div key={`${entry.edited_at || index}-${index}`} className="rounded-lg border border-blue-100 bg-white p-3 text-sm shadow-sm">
+                                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                    <p className="font-semibold text-gray-800">
+                                                                        {entry.edited_by_name || 'Unknown editor'}
+                                                                        {entry.edited_by_id ? ` (ID: ${entry.edited_by_id})` : ''}
+                                                                    </p>
+                                                                    <p className="text-xs text-gray-500">
+                                                                        {entry.edited_at ? new Date(entry.edited_at).toLocaleString() : '—'}
+                                                                    </p>
+                                                                </div>
+                                                                <div className="mt-2 space-y-2">
+                                                                    {(entry.changes || []).map((change, changeIndex) => (
+                                                                        <div key={`${change.field || changeIndex}-${changeIndex}`} className="rounded-md bg-blue-50 px-3 py-2 text-xs text-gray-700">
+                                                                            <p className="font-semibold text-gray-800">{change.label || change.field || 'Field'}</p>
+                                                                            <p>From: {formatAuditValue(change.old_value)}</p>
+                                                                            <p>To: {formatAuditValue(change.new_value)}</p>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        <p className="rounded-lg border border-dashed border-blue-200 bg-white px-3 py-4 text-xs text-gray-500">
+                                                            No edit history yet.
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+
                                         {/* Status - Editable */}
                                         <div>
                                             <label className="block text-sm font-bold text-gray-700 mb-2">

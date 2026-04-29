@@ -55,6 +55,10 @@ class FeedbackSerializer(serializers.ModelSerializer):
 
 
 class CSMFeedbackSerializer(serializers.ModelSerializer):
+    last_edited_by = serializers.PrimaryKeyRelatedField(read_only=True)
+    last_edited_by_name = serializers.SerializerMethodField()
+    edit_history = serializers.JSONField(read_only=True)
+
     class Meta:
         model = CSMFeedback
         fields = [
@@ -65,6 +69,13 @@ class CSMFeedbackSerializer(serializers.ModelSerializer):
             # NEW Admin Fields
             'status', 'admin_category',
             'is_valid', 'validity_remarks',
-            'is_doable', 'feasibility_remarks'
+            'is_doable', 'feasibility_remarks',
+            'last_edited_by', 'last_edited_by_name', 'last_edited_at', 'edit_history'
         ]
-        read_only_fields = ['id', 'created_at']
+        read_only_fields = ['id', 'created_at', 'last_edited_by', 'last_edited_by_name', 'last_edited_at', 'edit_history']
+
+    def get_last_edited_by_name(self, obj):
+        editor = getattr(obj, 'last_edited_by', None)
+        if not editor:
+            return None
+        return editor.full_name or editor.username or editor.email or str(editor.id)

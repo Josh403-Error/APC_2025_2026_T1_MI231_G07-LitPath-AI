@@ -16,7 +16,7 @@ from django.db import connection, models
 import dateutil.parser
 import time
 from django.utils import timezone
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
 from calendar import month_name
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
@@ -52,6 +52,32 @@ def parse_date_range(from_date, to_date):
     from_datetime = timezone.make_aware(datetime.combine(from_date_obj, datetime.min.time()))
     to_datetime = timezone.make_aware(datetime.combine(to_date_obj, datetime.max.time()))
     return from_datetime, to_datetime
+
+
+CSM_FEEDBACK_FIELD_LABELS = {
+    'status': 'Status',
+    'admin_category': 'Category',
+    'is_valid': 'Is this valid?',
+    'validity_remarks': 'Validity remarks',
+    'is_doable': 'Is it doable?',
+    'feasibility_remarks': 'Feasibility remarks',
+}
+
+
+def _format_audit_value(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return timezone.localtime(value).isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    return value
+
+
+def _get_editor_label(user):
+    if not user:
+        return None
+    return user.full_name or user.username or user.email or str(user.id)
 
 
 def insert_to_supabase_general_feedback(data):
@@ -873,8 +899,39 @@ def csm_feedback_detail(request, pk):
         # This allows AdminDashboard to update status/remarks
         serializer = CSMFeedbackSerializer(csm_feedback, data=request.data, partial=True)
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
+            original_values = {
+                field: getattr(csm_feedback, field)
+                for field in serializer.validated_data.keys()
+            }
+            updated_feedback = serializer.save()
+
+            changed_fields = []
+            for field_name, new_value in serializer.validated_data.items():
+                old_value = original_values.get(field_name)
+                if old_value != new_value:
+                    changed_fields.append({
+                        'field': field_name,
+                        'label': CSM_FEEDBACK_FIELD_LABELS.get(field_name, field_name.replace('_', ' ').title()),
+                        'old_value': _format_audit_value(old_value),
+                        'new_value': _format_audit_value(new_value),
+                    })
+
+            if changed_fields:
+                acting_user = getattr(request, 'authenticated_user', None)
+                timestamp = timezone.now()
+                edit_history = list(updated_feedback.edit_history or [])
+                edit_history.append({
+                    'edited_at': timestamp.isoformat(),
+                    'edited_by_id': getattr(acting_user, 'id', None),
+                    'edited_by_name': _get_editor_label(acting_user),
+                    'changes': changed_fields,
+                })
+                updated_feedback.last_edited_by = acting_user
+                updated_feedback.last_edited_at = timestamp
+                updated_feedback.edit_history = edit_history
+                updated_feedback.save(update_fields=['last_edited_by', 'last_edited_at', 'edit_history'])
+
+            return Response(CSMFeedbackSerializer(updated_feedback).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     elif request.method == 'DELETE':
