@@ -2,7 +2,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from django.utils import timezone
-from .models import AdminUser, UserAccount
+from .models import AdminUser, UserAccount, SystemSettings
 from .admin_serializers import (
     AdminLoginSerializer,
     AdminUserSerializer,
@@ -10,6 +10,7 @@ from .admin_serializers import (
     UserAccountAdminSerializer,
     UserAccountAdminCreateSerializer,
     UserAccountAdminUpdateSerializer,
+    SystemSettingsSerializer,
 )
 from .permissions import require_admin_only
 
@@ -250,4 +251,39 @@ def admin_user_account_detail_view(request, user_id):
         return Response({
             'success': False,
             'message': f'Error updating user account: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'PATCH'])
+@require_admin_only
+def system_settings_view(request):
+    """GET/PATCH /api/admin/system-settings/ - Read or update system settings."""
+    settings = SystemSettings.get_solo()
+
+    if request.method == 'GET':
+        serializer = SystemSettingsSerializer(settings)
+        return Response({
+            'success': True,
+            'settings': serializer.data,
+        }, status=status.HTTP_200_OK)
+
+    serializer = SystemSettingsSerializer(settings, data=request.data, partial=True, context={'request': request})
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'message': 'Invalid input',
+            'errors': serializer.errors,
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        settings = serializer.save()
+        return Response({
+            'success': True,
+            'message': 'System settings updated successfully',
+            'settings': SystemSettingsSerializer(settings).data,
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'Error updating system settings: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

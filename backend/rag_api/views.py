@@ -5,7 +5,7 @@ from rest_framework.decorators import api_view
 from django.http import StreamingHttpResponse
 from .rag_service import RAGService
 from .serializers import CSMFeedbackSerializer
-from .models import CSMFeedback, CitationCopy, Material, MaterialView, ResearchHistory
+from .models import CSMFeedback, CitationCopy, Material, MaterialView, ResearchHistory, SystemSettings
 from .models_password_reset import PasswordResetToken
 from .password_validation import validate_password_strength
 import secrets
@@ -270,6 +270,12 @@ class SearchView(APIView):
                     "total_results": 0,
                 }, status=status.HTTP_200_OK)
 
+            system_settings = SystemSettings.get_solo()
+            search_settings = system_settings.search_settings or {}
+            result_limit = int(search_settings.get('result_limit', 10) or 10)
+            rerank_top_k = int(search_settings.get('rerank_top_k', 15) or 15)
+            distance_threshold = float(search_settings.get('distance_threshold', 1.2) or 1.2)
+
             available_filters = rag.get_available_filters()
             
             parsed = extract_filters_from_query(question, available_filters.get("subjects", []))
@@ -361,6 +367,9 @@ class SearchView(APIView):
                     if len(question.split()) > 10:
                         suggestions.append("Try shortening your query to key terms only")
                     suggestions.append("Try searching for broader topics related to your question")
+                    top_n=result_limit,
+                    distance_threshold=distance_threshold,
+                    rerank_top_k=rerank_top_k,
                 
                 # === Record response time ===
                 # CHANGED: Use the pure vector search retrieval time!
@@ -506,6 +515,12 @@ class StreamingSearchView(APIView):
             
             rag = RAGService.ensure_initialized()
 
+            system_settings = SystemSettings.get_solo()
+            search_settings = system_settings.search_settings or {}
+            result_limit = int(search_settings.get('result_limit', 10) or 10)
+            rerank_top_k = int(search_settings.get('rerank_top_k', 15) or 15)
+            distance_threshold = float(search_settings.get('distance_threshold', 1.2) or 1.2)
+
             if RAGService.is_indexing():
                 return Response({
                     "overview": "The system is currently indexing theses. Please try again in a few minutes.",
@@ -557,6 +572,9 @@ class StreamingSearchView(APIView):
                     year=year,
                     year_start=year_start,
                     year_end=year_end,
+                    top_n=result_limit,
+                    distance_threshold=distance_threshold,
+                    rerank_top_k=rerank_top_k,
                     exclude_files=exclude_files,
                     conversation_history=conversation_history,
                     request_id=request_id

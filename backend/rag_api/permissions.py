@@ -32,6 +32,13 @@ def get_authenticated_session(request):
             status=status.HTTP_401_UNAUTHORIZED,
         )
 
+    # Reject sessions for users who have been deactivated
+    if session.user and not session.user.is_active:
+        return None, Response(
+            {'success': False, 'message': 'Account is inactive.'},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+
     return session, None
 
 

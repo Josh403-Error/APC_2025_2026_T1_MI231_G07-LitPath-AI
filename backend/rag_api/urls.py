@@ -19,6 +19,7 @@ from . admin_views import (
     admin_user_delete_view,
     admin_user_accounts_view,
     admin_user_account_detail_view,
+    system_settings_view,
 )
 from . auth_views import (
     auth_login_view, auth_register_view, auth_guest_session_view,
@@ -100,6 +101,8 @@ urlpatterns = [
     path('admin/user-accounts/', admin_user_accounts_view, name='admin-user-accounts'),
     path('admin/user-accounts', admin_user_accounts_view, name='admin-user-accounts-no-slash'),
     path('admin/user-accounts/<int:user_id>/', admin_user_account_detail_view, name='admin-user-account-detail'),
+    path('admin/system-settings/', system_settings_view, name='admin-system-settings'),
+    path('admin/system-settings', system_settings_view, name='admin-system-settings-no-slash'),
 
     # Material Views (Most Browsed)
     path('track-view/', views.track_material_view, name='track_material_view'),

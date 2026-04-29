@@ -2,7 +2,26 @@
 //  Centralized API configuration & helper
 // ────────────────────────────────────────────────
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+function normalizeApiBaseUrl(value: string | undefined): string | null {
+    const trimmed = value?.trim();
+    if (!trimmed) return null;
+
+    const withoutTrailingSlash = trimmed.replace(/\/$/, '');
+    if (withoutTrailingSlash.endsWith('/api')) {
+        return withoutTrailingSlash;
+    }
+
+    return `${withoutTrailingSlash}/api`;
+}
+
+function resolveApiBaseUrl(): string {
+    const configured = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL as string | undefined);
+    if (configured) return configured;
+
+    return 'http://localhost:8000/api';
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 /**
  * Get the current auth token from localStorage.

@@ -38,14 +38,72 @@ const emptyForm = {
     confirmPassword: '',
 };
 
-const formatDateTime = (value?: string | null) => {
+const defaultSystemSettings = {
+    ai_model_settings: {
+        provider: 'gemini',
+        generation_model: 'gemini-3-flash',
+        rerank_model: 'gemini-2.5-flash',
+        rewrite_model: 'gemini-2.5-flash-lite',
+        temperature: 0.2,
+        top_p: 0.8,
+        max_output_tokens: 1024,
+    },
+    search_settings: {
+        ranking_strategy: 'hybrid',
+        result_limit: 10,
+        rerank_top_k: 15,
+        distance_threshold: 1.2,
+        enable_subject_filters: false,
+        enable_year_filters: true,
+        enable_strict_matching: true,
+        relevance_floor: 0.5,
+    },
+    environment_config: {
+        database_url: '',
+        email_host_user: '',
+        email_host_password: '',
+        gemini_api_key: '',
+        hf_token: '',
+    },
+};
+
+const normalizeSystemSettings = (rawSettings = {}) => ({
+    ai_model_settings: {
+        ...defaultSystemSettings.ai_model_settings,
+        ...(rawSettings.ai_model_settings || {}),
+    },
+    search_settings: {
+        ...defaultSystemSettings.search_settings,
+        ...(rawSettings.search_settings || {}),
+    },
+    environment_config: {
+        ...defaultSystemSettings.environment_config,
+        ...(rawSettings.environment_config || {}),
+    },
+});
+
+const parseApiResponse = async (response, fallbackMessage) => {
+    const responseText = await response.text();
+    if (!responseText) {
+        return {};
+    }
+
+    try {
+        return JSON.parse(responseText);
+    } catch {
+        const responseType = response.headers.get('content-type') || 'unknown content type';
+        throw new Error(`${fallbackMessage} The server returned ${responseType} instead of JSON.`);
+    }
+};
+
+const formatDateTime = (value) => {
     if (!value) return 'Never';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return 'Never';
     return date.toLocaleString();
 };
 
-const getBadgeClasses = (role: string, isActive: boolean) => {
+const getBadgeClasses = (role, isActive) => {
     if (!isActive) {
         return 'border-slate-200 bg-slate-100 text-slate-600';
     }
@@ -64,10 +122,20 @@ const getBadgeClasses = (role: string, isActive: boolean) => {
 const ITAdminDashboard = () => {
     const { user, logout } = useAuth();
 
+    const tabs = [
+        { key: 'accounts', label: 'Account Management' },
+        { key: 'system', label: 'System Settings' },
+    ];
+    const [activeTab, setActiveTab] = useState('accounts');
+
     const [accounts, setAccounts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [settingsLoading, setSettingsLoading] = useState(true);
+    const [settingsSaving, setSettingsSaving] = useState(false);
     const [pageError, setPageError] = useState('');
+    const [settingsError, setSettingsError] = useState('');
+    const [settingsUpdatedAt, setSettingsUpdatedAt] = useState('');
     const [toast, setToast] = useState({ show: false, type: 'success', message: '' });
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
@@ -75,6 +143,7 @@ const ITAdminDashboard = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingAccount, setEditingAccount] = useState(null);
     const [form, setForm] = useState(emptyForm);
+    const [systemSettings, setSystemSettings] = useState(defaultSystemSettings);
 
     const showToast = (type, message) => {
         setToast({ show: true, type, message });
@@ -91,7 +160,7 @@ const ITAdminDashboard = () => {
             const response = await fetch(`${API_BASE_URL}/admin/user-accounts/`, {
                 headers: apiHeaders(true),
             });
-            const data = await response.json();
+            const data = await parseApiResponse(response, 'Unable to load user accounts.');
 
             if (!response.ok || !data.success) {
                 throw new Error(data.message || 'Unable to load user accounts.');
@@ -105,8 +174,32 @@ const ITAdminDashboard = () => {
         }
     };
 
+    const loadSettings = async () => {
+        setSettingsLoading(true);
+        setSettingsError('');
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/admin/system-settings/`, {
+                headers: apiHeaders(true),
+            });
+            const data = await parseApiResponse(response, 'Unable to load system settings.');
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Unable to load system settings.');
+            }
+
+            setSettingsUpdatedAt(data.settings?.updated_at || '');
+            setSystemSettings(normalizeSystemSettings(data.settings || {}));
+        } catch (error) {
+            setSettingsError(error.message || 'Unable to load system settings.');
+        } finally {
+            setSettingsLoading(false);
+        }
+    };
+
     useEffect(() => {
         loadAccounts();
+        loadSettings();
     }, []);
 
     useEffect(() => {
@@ -144,6 +237,120 @@ const ITAdminDashboard = () => {
     const closeModal = () => {
         setIsModalOpen(false);
         resetForm();
+    };
+
+    const updateSystemSection = (section, key, value) => {
+        setSystemSettings((current) => ({
+            ...current,
+            [section]: {
+                ...current[section],
+                [key]: value,
+            },
+        }));
+    };
+
+    const validateUrl = (value, label) => {
+        if (!value) return '';
+        try {
+            const parsed = new URL(value);
+            if (!['http:', 'https:'].includes(parsed.protocol)) {
+                return `${label} must use http or https.`;
+            }
+        } catch {
+            return `${label} must be a valid URL.`;
+        }
+        return '';
+    };
+
+    const submitSystemSettings = async (event) => {
+        event.preventDefault();
+        setSettingsSaving(true);
+        setSettingsError('');
+
+        const ai = systemSettings.ai_model_settings;
+        const search = systemSettings.search_settings;
+        const envConfig = systemSettings.environment_config;
+
+        if (!ai.provider.trim()) {
+            setSettingsError('AI provider is required.');
+            setSettingsSaving(false);
+            return;
+        }
+        if (!ai.generation_model.trim()) {
+            setSettingsError('Generation model is required.');
+            setSettingsSaving(false);
+            return;
+        }
+        if (!ai.rewrite_model.trim()) {
+            setSettingsError('Rewrite model is required.');
+            setSettingsSaving(false);
+            return;
+        }
+        if (!ai.rerank_model.trim()) {
+            setSettingsError('Rerank model is required.');
+            setSettingsSaving(false);
+            return;
+        }
+        if (ai.temperature < 0 || ai.temperature > 2) {
+            setSettingsError('Temperature must be between 0 and 2.');
+            setSettingsSaving(false);
+            return;
+        }
+        if (ai.top_p <= 0 || ai.top_p > 1) {
+            setSettingsError('Top-p must be greater than 0 and at most 1.');
+            setSettingsSaving(false);
+            return;
+        }
+        if (search.result_limit < 1 || search.result_limit > 50) {
+            setSettingsError('Result limit must be between 1 and 50.');
+            setSettingsSaving(false);
+            return;
+        }
+        if (search.rerank_top_k < 1 || search.rerank_top_k > 50) {
+            setSettingsError('Rerank top-k must be between 1 and 50.');
+            setSettingsSaving(false);
+            return;
+        }
+        if (search.distance_threshold < 0 || search.distance_threshold > 5) {
+            setSettingsError('Distance threshold must be between 0 and 5.');
+            setSettingsSaving(false);
+            return;
+        }
+
+        // Validate DATABASE_URL format if provided
+        if (systemSettings.environment_config.database_url) {
+            const dbUrlError = validateUrl(systemSettings.environment_config.database_url, 'Database URL');
+            if (dbUrlError) {
+                setSettingsError(dbUrlError);
+                setSettingsSaving(false);
+                return;
+            }
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/admin/system-settings/`, {
+                method: 'PATCH',
+                headers: apiHeaders(true),
+                body: JSON.stringify(systemSettings),
+            });
+
+            const data = await parseApiResponse(response, 'Unable to save account.');
+            if (!response.ok || !data.success) {
+                const errors = data.errors
+                    ? Object.values(data.errors).flat().join(' ')
+                    : data.message || 'Unable to save system settings.';
+                throw new Error(errors);
+            }
+
+            setSettingsUpdatedAt(data.settings?.updated_at || settingsUpdatedAt);
+            setSystemSettings(normalizeSystemSettings(data.settings || systemSettings));
+            showToast('success', 'System settings updated.');
+            await loadSettings();
+        } catch (error) {
+            setSettingsError(error.message || 'Unable to save system settings.');
+        } finally {
+            setSettingsSaving(false);
+        }
     };
 
     const filteredAccounts = useMemo(() => {
@@ -218,7 +425,7 @@ const ITAdminDashboard = () => {
                 }
             );
 
-            const data = await response.json();
+            const data = await parseApiResponse(response, 'Unable to update account status.');
             if (!response.ok || !data.success) {
                 const errors = data.errors
                     ? Object.values(data.errors).flat().join(' ')
@@ -251,7 +458,7 @@ const ITAdminDashboard = () => {
                 body: JSON.stringify({ is_active: !account.is_active }),
             });
 
-            const data = await response.json();
+            const data = await parseApiResponse(response, 'Unable to save system settings.');
             if (!response.ok || !data.success) {
                 throw new Error(data.message || 'Unable to update account status.');
             }
@@ -266,6 +473,7 @@ const ITAdminDashboard = () => {
     };
 
     const passwordChecks = getPasswordRequirementChecks(form.password || '');
+    const configuredIntegrations = Object.values(systemSettings.environment_config || {}).filter(Boolean).length;
 
     return (
         <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#f8fafc,_#eef2ff_38%,_#e2e8f0_100%)] text-slate-900">
@@ -297,94 +505,107 @@ const ITAdminDashboard = () => {
                         </div>
                     </div>
 
-                    <div className="grid gap-4 border-b border-slate-200/70 bg-slate-50/60 p-6 md:grid-cols-4">
-                        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                            <div className="flex items-center justify-between">
-                                <p className="text-sm font-medium text-slate-600">Total accounts</p>
-                                <Users className="h-5 w-5 text-slate-400" />
-                            </div>
-                            <p className="mt-3 text-3xl font-black tracking-tight text-slate-900">{metrics.total}</p>
+                    <div className="border-b border-slate-200/70 bg-white px-6 py-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                            {tabs.map((tab) => (
+                                <button
+                                    key={tab.key}
+                                    type="button"
+                                    onClick={() => setActiveTab(tab.key)}
+                                    className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${activeTab === tab.key
+                                        ? 'bg-slate-900 text-white'
+                                        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                                    }`}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
                         </div>
-                        <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
-                            <div className="flex items-center justify-between">
-                                <p className="text-sm font-medium text-emerald-700">Active accounts</p>
-                                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                            </div>
-                            <p className="mt-3 text-3xl font-black tracking-tight text-emerald-900">{metrics.active}</p>
-                        </div>
-                        <div className="rounded-3xl border border-rose-200 bg-rose-50 p-5 shadow-sm">
-                            <div className="flex items-center justify-between">
-                                <p className="text-sm font-medium text-rose-700">IT admins</p>
-                                <ShieldCheck className="h-5 w-5 text-rose-600" />
-                            </div>
-                            <p className="mt-3 text-3xl font-black tracking-tight text-rose-900">{metrics.admins}</p>
-                        </div>
-                        <div className="rounded-3xl border border-sky-200 bg-sky-50 p-5 shadow-sm">
-                            <div className="flex items-center justify-between">
-                                <p className="text-sm font-medium text-sky-700">Library admins</p>
-                                <UserRoundCog className="h-5 w-5 text-sky-600" />
-                            </div>
-                            <p className="mt-3 text-3xl font-black tracking-tight text-sky-900">{metrics.staff}</p>
+                    </div>
+
+                    <div className="border-b border-slate-200/70 bg-slate-50/60 px-6 py-4">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
+                            <span className="inline-flex items-center gap-2 font-semibold text-slate-900">
+                                <Users className="h-4 w-4 text-slate-400" />
+                                Total {metrics.total}
+                            </span>
+                            <span className="text-slate-300">•</span>
+                            <span className="inline-flex items-center gap-2 font-semibold text-emerald-800">
+                                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                                Active {metrics.active}
+                            </span>
+                            <span className="text-slate-300">•</span>
+                            <span className="inline-flex items-center gap-2 font-semibold text-rose-800">
+                                <ShieldCheck className="h-4 w-4 text-rose-600" />
+                                IT admins {metrics.admins}
+                            </span>
+                            <span className="text-slate-300">•</span>
+                            <span className="inline-flex items-center gap-2 font-semibold text-sky-800">
+                                <UserRoundCog className="h-4 w-4 text-sky-600" />
+                                Library admins {metrics.staff}
+                            </span>
                         </div>
                     </div>
 
                     <div className="p-6">
-                        <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                            <div>
-                                <h2 className="text-2xl font-black tracking-tight text-slate-900">Manage User Accounts</h2>
-                                <p className="mt-1 text-sm text-slate-600">Create, edit, deactivate, and assign roles for every registered account.</p>
-                            </div>
+                        {activeTab === 'accounts' ? (
+                            <>
+                                <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                                    <div>
+                                        <h2 className="text-2xl font-black tracking-tight text-slate-900">Manage User Accounts</h2>
+                                        <p className="mt-1 text-sm text-slate-600">Create, edit, deactivate, and assign roles for every registered account.</p>
+                                    </div>
 
-                            <div className="flex flex-wrap gap-3">
-                                <button
-                                    type="button"
-                                    onClick={loadAccounts}
-                                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50"
-                                >
-                                    <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                                    Refresh
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={openCreateModal}
-                                    className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
-                                >
-                                    <UserRoundPlus className="h-4 w-4" />
-                                    Add user
-                                </button>
-                            </div>
-                        </div>
+                                    <div className="flex flex-wrap gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={loadAccounts}
+                                            className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50"
+                                        >
+                                            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                                            Refresh
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={openCreateModal}
+                                            className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+                                        >
+                                            <UserRoundPlus className="h-4 w-4" />
+                                            Add user
+                                        </button>
+                                    </div>
+                                </div>
 
-                        <div className="grid gap-3 md:grid-cols-3">
-                            <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                                <Search className="h-4 w-4 text-slate-400" />
-                                <input
-                                    value={searchTerm}
-                                    onChange={(event) => setSearchTerm(event.target.value)}
-                                    placeholder="Search by name, email, or username"
-                                    className="w-full border-0 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
-                                />
-                            </label>
-                            <select
-                                value={roleFilter}
-                                onChange={(event) => setRoleFilter(event.target.value)}
-                                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none"
-                            >
-                                <option value="all">All roles</option>
-                                {roleOptions.map((option) => (
-                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                ))}
-                            </select>
-                            <select
-                                value={statusFilter}
-                                onChange={(event) => setStatusFilter(event.target.value)}
-                                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none"
-                            >
-                                <option value="all">All statuses</option>
-                                <option value="active">Active</option>
-                                <option value="inactive">Inactive</option>
-                            </select>
-                        </div>
+                                <div className="grid gap-3 md:grid-cols-3">
+                                    <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                                        <Search className="h-4 w-4 text-slate-400" />
+                                        <input
+                                            value={searchTerm}
+                                            onChange={(event) => setSearchTerm(event.target.value)}
+                                            placeholder="Search by name, email, or username"
+                                            className="w-full border-0 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                                        />
+                                    </label>
+                                    <select
+                                        value={roleFilter}
+                                        onChange={(event) => setRoleFilter(event.target.value)}
+                                        className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none"
+                                    >
+                                        <option value="all">All roles</option>
+                                        {roleOptions.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </select>
+                                    <select
+                                        value={statusFilter}
+                                        onChange={(event) => setStatusFilter(event.target.value)}
+                                        className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none"
+                                    >
+                                        <option value="all">All statuses</option>
+                                        <option value="active">Active</option>
+                                        <option value="inactive">Inactive</option>
+                                    </select>
+                                </div>
 
                         {pageError ? (
                             <div className="mt-5 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -393,101 +614,469 @@ const ITAdminDashboard = () => {
                             </div>
                         ) : null}
 
-                        <div className="mt-6 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-sm">
-                            {loading ? (
-                                <div className="flex min-h-[280px] items-center justify-center">
-                                    <div className="flex items-center gap-3 text-slate-500">
-                                        <Loader2 className="h-5 w-5 animate-spin" />
-                                        Loading user accounts...
-                                    </div>
-                                </div>
-                            ) : filteredAccounts.length === 0 ? (
-                                <div className="flex min-h-[280px] flex-col items-center justify-center px-6 py-12 text-center">
-                                    <div className="rounded-full bg-slate-100 p-4 text-slate-500">
-                                        <Users className="h-8 w-8" />
-                                    </div>
-                                    <h3 className="mt-4 text-lg font-bold text-slate-900">No matching accounts</h3>
-                                    <p className="mt-2 max-w-md text-sm text-slate-500">
-                                        Adjust your filters or create a new user account to start populating the table.
-                                    </p>
-                                </div>
-                            ) : (
-                                <div className="overflow-x-auto">
-                                    <table className="min-w-full divide-y divide-slate-200">
-                                        <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
-                                            <tr>
-                                                <th className="px-6 py-4">User</th>
-                                                <th className="px-6 py-4">Role</th>
-                                                <th className="px-6 py-4">Status</th>
-                                                <th className="px-6 py-4">Created</th>
-                                                <th className="px-6 py-4">Last login</th>
-                                                <th className="px-6 py-4 text-right">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100 bg-white">
-                                            {filteredAccounts.map((account) => {
-                                                const isSelf = String(user?.id) === String(account.id);
-                                                return (
-                                                    <tr key={account.id} className="transition hover:bg-slate-50/70">
-                                                        <td className="px-6 py-5 align-top">
-                                                            <div className="flex items-start gap-4">
-                                                                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-sm font-bold text-white">
-                                                                    {(account.full_name || account.username || '?').slice(0, 1).toUpperCase()}
-                                                                </div>
-                                                                <div>
-                                                                    <p className="text-sm font-bold text-slate-900">{account.full_name || 'Unnamed user'}</p>
-                                                                    <p className="text-sm text-slate-500">@{account.username}</p>
-                                                                    <p className="text-sm text-slate-500">{account.email}</p>
-                                                                    {isSelf ? (
-                                                                        <span className="mt-2 inline-flex rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                                                                            Current account
-                                                                        </span>
-                                                                    ) : null}
-                                                                </div>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-6 py-5 align-top">
-                                                            <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getBadgeClasses(account.role, account.is_active)}`}>
-                                                                {account.role_label || getRoleLabel(account.role)}
-                                                            </span>
-                                                        </td>
-                                                        <td className="px-6 py-5 align-top">
-                                                            <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${account.is_active ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>
-                                                                {account.is_active ? <CheckCircle2 className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
-                                                                {account.is_active ? 'Active' : 'Inactive'}
-                                                            </span>
-                                                        </td>
-                                                        <td className="px-6 py-5 align-top text-sm text-slate-600">{formatDateTime(account.created_at)}</td>
-                                                        <td className="px-6 py-5 align-top text-sm text-slate-600">{formatDateTime(account.last_login)}</td>
-                                                        <td className="px-6 py-5 align-top">
-                                                            <div className="flex justify-end gap-2">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => openEditModal(account)}
-                                                                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-                                                                >
-                                                                    <Edit2 className="h-4 w-4" />
-                                                                    Edit
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => toggleAccountState(account)}
-                                                                    disabled={saving || isSelf}
-                                                                    className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${account.is_active ? 'border border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 disabled:opacity-60' : 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 disabled:opacity-60'}`}
-                                                                >
-                                                                    {account.is_active ? <UserX className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                                                                    {account.is_active ? 'Deactivate' : 'Reactivate'}
-                                                                </button>
-                                                            </div>
-                                                        </td>
+                                <div className="mt-6 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-sm">
+                                    {loading ? (
+                                        <div className="flex min-h-[280px] items-center justify-center">
+                                            <div className="flex items-center gap-3 text-slate-500">
+                                                <Loader2 className="h-5 w-5 animate-spin" />
+                                                Loading user accounts...
+                                            </div>
+                                        </div>
+                                    ) : filteredAccounts.length === 0 ? (
+                                        <div className="flex min-h-[280px] flex-col items-center justify-center px-6 py-12 text-center">
+                                            <div className="rounded-full bg-slate-100 p-4 text-slate-500">
+                                                <Users className="h-8 w-8" />
+                                            </div>
+                                            <h3 className="mt-4 text-lg font-bold text-slate-900">No matching accounts</h3>
+                                            <p className="mt-2 max-w-md text-sm text-slate-500">
+                                                Adjust your filters or create a new user account to start populating the table.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <div className="overflow-x-auto">
+                                            <table className="min-w-full divide-y divide-slate-200">
+                                                <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+                                                    <tr>
+                                                        <th className="px-6 py-4">User</th>
+                                                        <th className="px-6 py-4">Role</th>
+                                                        <th className="px-6 py-4">Status</th>
+                                                        <th className="px-6 py-4">Created</th>
+                                                        <th className="px-6 py-4">Last login</th>
+                                                        <th className="px-6 py-4 text-right">Actions</th>
                                                     </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 bg-white">
+                                                    {filteredAccounts.map((account) => {
+                                                        const isSelf = String(user?.id) === String(account.id);
+                                                        return (
+                                                            <tr key={account.id} className="transition hover:bg-slate-50/70">
+                                                                <td className="px-6 py-5 align-top">
+                                                                    <div className="flex items-start gap-4">
+                                                                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-sm font-bold text-white">
+                                                                            {(account.full_name || account.username || '?').slice(0, 1).toUpperCase()}
+                                                                        </div>
+                                                                        <div>
+                                                                            <p className="text-sm font-bold text-slate-900">{account.full_name || 'Unnamed user'}</p>
+                                                                            <p className="text-sm text-slate-500">@{account.username}</p>
+                                                                            <p className="text-sm text-slate-500">{account.email}</p>
+                                                                            {isSelf ? (
+                                                                                <span className="mt-2 inline-flex rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                                                                    Current account
+                                                                                </span>
+                                                                            ) : null}
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-6 py-5 align-top">
+                                                                    <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getBadgeClasses(account.role, account.is_active)}`}>
+                                                                        {account.role_label || getRoleLabel(account.role)}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-6 py-5 align-top">
+                                                                    <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${account.is_active ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>
+                                                                        {account.is_active ? <CheckCircle2 className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+                                                                        {account.is_active ? 'Active' : 'Inactive'}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-6 py-5 align-top text-sm text-slate-600">{formatDateTime(account.created_at)}</td>
+                                                                <td className="px-6 py-5 align-top text-sm text-slate-600">{formatDateTime(account.last_login)}</td>
+                                                                <td className="px-6 py-5 align-top">
+                                                                    <div className="flex justify-end gap-2">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => openEditModal(account)}
+                                                                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                                                                        >
+                                                                            <Edit2 className="h-4 w-4" />
+                                                                            Edit
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => toggleAccountState(account)}
+                                                                            disabled={saving || isSelf}
+                                                                            className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${account.is_active ? 'border border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 disabled:opacity-60' : 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 disabled:opacity-60'}`}
+                                                                        >
+                                                                            {account.is_active ? <UserX className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                                                                            {account.is_active ? 'Deactivate' : 'Reactivate'}
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
                                 </div>
-                            )}
-                        </div>
+                            </>
+                        ) : activeTab === 'system' ? (
+                            <>
+                                <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                                    <div>
+                                        <h2 className="text-2xl font-black tracking-tight text-slate-900">Configure System Settings</h2>
+                                        <p className="mt-1 text-sm text-slate-600">
+                                            Tune AI model parameters, ranking thresholds, filtering rules, and API integration endpoints.
+                                        </p>
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={loadSettings}
+                                            className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50"
+                                        >
+                                            <RefreshCw className={`h-4 w-4 ${settingsLoading ? 'animate-spin' : ''}`} />
+                                            Refresh
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            form="system-settings-form"
+                                            disabled={settingsSaving || settingsLoading}
+                                            className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+                                        >
+                                            {settingsSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                            Save changes
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="grid gap-3 md:grid-cols-3">
+                                    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+                                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">AI model</p>
+                                        <p className="mt-2 text-lg font-black text-slate-900">{systemSettings.ai_model_settings.generation_model}</p>
+                                        <p className="mt-1 text-sm text-slate-600">Provider: {systemSettings.ai_model_settings.provider}</p>
+                                    </div>
+                                    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+                                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Ranking</p>
+                                        <p className="mt-2 text-lg font-black text-slate-900">{systemSettings.search_settings.ranking_strategy}</p>
+                                        <p className="mt-1 text-sm text-slate-600">Result limit {systemSettings.search_settings.result_limit} · Threshold {systemSettings.search_settings.distance_threshold}</p>
+                                    </div>
+                                    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+                                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Environment Config</p>
+                                        <p className="mt-2 text-lg font-black text-slate-900">{configuredIntegrations} configured</p>
+                                        <p className="mt-1 text-sm text-slate-600">Last saved {formatDateTime(settingsUpdatedAt)}</p>
+                                    </div>
+                                </div>
+
+                                {settingsLoading ? (
+                                    <div className="mt-6 flex min-h-[320px] items-center justify-center rounded-[1.75rem] border border-slate-200 bg-white shadow-sm">
+                                        <div className="flex items-center gap-3 text-slate-500">
+                                            <Loader2 className="h-5 w-5 animate-spin" />
+                                            Loading system settings...
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <form id="system-settings-form" onSubmit={submitSystemSettings} className="mt-6 grid gap-6 xl:grid-cols-3">
+                                        <section className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm xl:col-span-1">
+                                            <div>
+                                                <h3 className="text-lg font-black tracking-tight text-slate-900">AI Model Parameters</h3>
+                                                <p className="mt-1 text-sm text-slate-600">Set the generation and rewriting models used by the RAG pipeline.</p>
+                                            </div>
+
+                                            <div className="mt-5 grid gap-4">
+                                                <label className="grid gap-2">
+                                                    <span className="text-sm font-semibold text-slate-700">Provider</span>
+                                                    <input
+                                                        value={systemSettings.ai_model_settings.provider}
+                                                        onChange={(event) => updateSystemSection('ai_model_settings', 'provider', event.target.value)}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="gemini"
+                                                    />
+                                                </label>
+
+                                                <label className="grid gap-2">
+                                                    <span className="text-sm font-semibold text-slate-700">Generation model</span>
+                                                    <input
+                                                        value={systemSettings.ai_model_settings.generation_model}
+                                                        onChange={(event) => updateSystemSection('ai_model_settings', 'generation_model', event.target.value)}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="gemini-2.5-flash"
+                                                    />
+                                                </label>
+
+                                                <label className="grid gap-2">
+                                                    <span className="text-sm font-semibold text-slate-700">Rewrite model</span>
+                                                    <input
+                                                        value={systemSettings.ai_model_settings.rewrite_model}
+                                                        onChange={(event) => updateSystemSection('ai_model_settings', 'rewrite_model', event.target.value)}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="gemini-2.5-flash-lite"
+                                                    />
+                                                </label>
+
+                                                <label className="grid gap-2">
+                                                    <span className="text-sm font-semibold text-slate-700">Rerank model</span>
+                                                    <input
+                                                        value={systemSettings.ai_model_settings.rerank_model}
+                                                        onChange={(event) => updateSystemSection('ai_model_settings', 'rerank_model', event.target.value)}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="gemini-2.5-flash"
+                                                    />
+                                                </label>
+
+                                                <div className="grid gap-4 sm:grid-cols-2">
+                                                    <label className="grid gap-2">
+                                                        <span className="text-sm font-semibold text-slate-700">Temperature</span>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max="2"
+                                                            step="0.1"
+                                                            value={systemSettings.ai_model_settings.temperature}
+                                                            onChange={(event) => updateSystemSection('ai_model_settings', 'temperature', Number(event.target.value))}
+                                                            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        />
+                                                    </label>
+
+                                                    <label className="grid gap-2">
+                                                        <span className="text-sm font-semibold text-slate-700">Top-p</span>
+                                                        <input
+                                                            type="number"
+                                                            min="0.1"
+                                                            max="1"
+                                                            step="0.05"
+                                                            value={systemSettings.ai_model_settings.top_p}
+                                                            onChange={(event) => updateSystemSection('ai_model_settings', 'top_p', Number(event.target.value))}
+                                                            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        />
+                                                    </label>
+                                                </div>
+
+                                                <label className="grid gap-2">
+                                                    <span className="text-sm font-semibold text-slate-700">Max output tokens</span>
+                                                    <input
+                                                        type="number"
+                                                        min="64"
+                                                        max="8192"
+                                                        step="64"
+                                                        value={systemSettings.ai_model_settings.max_output_tokens}
+                                                        onChange={(event) => updateSystemSection('ai_model_settings', 'max_output_tokens', Number(event.target.value))}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                    />
+                                                </label>
+                                            </div>
+                                        </section>
+
+                                        <section className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm xl:col-span-1">
+                                            <div>
+                                                <h3 className="text-lg font-black tracking-tight text-slate-900">Search & Recommendation Logic</h3>
+                                                <p className="mt-1 text-sm text-slate-600">Control ranking strategy, result thresholds, and filtering rules.</p>
+                                            </div>
+
+                                            <div className="mt-5 grid gap-4">
+                                                <label className="grid gap-2">
+                                                    <span className="text-sm font-semibold text-slate-700">Ranking strategy</span>
+                                                    <select
+                                                        value={systemSettings.search_settings.ranking_strategy}
+                                                        onChange={(event) => updateSystemSection('search_settings', 'ranking_strategy', event.target.value)}
+                                                        className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none"
+                                                    >
+                                                        <option value="hybrid">Hybrid</option>
+                                                        <option value="semantic">Semantic</option>
+                                                        <option value="keyword">Keyword</option>
+                                                        <option value="rerank">Rerank only</option>
+                                                    </select>
+                                                </label>
+
+                                                <div className="grid gap-4 sm:grid-cols-2">
+                                                    <label className="grid gap-2">
+                                                        <span className="text-sm font-semibold text-slate-700">Result limit</span>
+                                                        <input
+                                                            type="number"
+                                                            min="1"
+                                                            max="50"
+                                                            step="1"
+                                                            value={systemSettings.search_settings.result_limit}
+                                                            onChange={(event) => updateSystemSection('search_settings', 'result_limit', Number(event.target.value))}
+                                                            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        />
+                                                    </label>
+
+                                                    <label className="grid gap-2">
+                                                        <span className="text-sm font-semibold text-slate-700">Rerank top-k</span>
+                                                        <input
+                                                            type="number"
+                                                            min="1"
+                                                            max="50"
+                                                            step="1"
+                                                            value={systemSettings.search_settings.rerank_top_k}
+                                                            onChange={(event) => updateSystemSection('search_settings', 'rerank_top_k', Number(event.target.value))}
+                                                            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        />
+                                                    </label>
+                                                </div>
+
+                                                <div className="grid gap-4 sm:grid-cols-2">
+                                                    <label className="grid gap-2">
+                                                        <span className="text-sm font-semibold text-slate-700">Distance threshold</span>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max="5"
+                                                            step="0.1"
+                                                            value={systemSettings.search_settings.distance_threshold}
+                                                            onChange={(event) => updateSystemSection('search_settings', 'distance_threshold', Number(event.target.value))}
+                                                            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        />
+                                                    </label>
+
+                                                    <label className="grid gap-2">
+                                                        <span className="text-sm font-semibold text-slate-700">Relevance floor</span>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max="1"
+                                                            step="0.05"
+                                                            value={systemSettings.search_settings.relevance_floor}
+                                                            onChange={(event) => updateSystemSection('search_settings', 'relevance_floor', Number(event.target.value))}
+                                                            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        />
+                                                    </label>
+                                                </div>
+
+                                                <div className="grid gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                                                    <label className="flex items-center justify-between gap-4">
+                                                        <div>
+                                                            <span className="text-sm font-semibold text-slate-700">Enable subject filters</span>
+                                                            <p className="text-xs text-slate-500">Use subject metadata when narrowing recommendations.</p>
+                                                        </div>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={Boolean(systemSettings.search_settings.enable_subject_filters)}
+                                                            onChange={(event) => updateSystemSection('search_settings', 'enable_subject_filters', event.target.checked)}
+                                                            className="h-5 w-5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                                                        />
+                                                    </label>
+                                                    <label className="flex items-center justify-between gap-4">
+                                                        <div>
+                                                            <span className="text-sm font-semibold text-slate-700">Enable year filters</span>
+                                                            <p className="text-xs text-slate-500">Allow date-range constraints in search and ranking.</p>
+                                                        </div>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={Boolean(systemSettings.search_settings.enable_year_filters)}
+                                                            onChange={(event) => updateSystemSection('search_settings', 'enable_year_filters', event.target.checked)}
+                                                            className="h-5 w-5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                                                        />
+                                                    </label>
+                                                    <label className="flex items-center justify-between gap-4">
+                                                        <div>
+                                                            <span className="text-sm font-semibold text-slate-700">Enable strict matching</span>
+                                                            <p className="text-xs text-slate-500">Keep the final relevance filter conservative for direct queries.</p>
+                                                        </div>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={Boolean(systemSettings.search_settings.enable_strict_matching)}
+                                                            onChange={(event) => updateSystemSection('search_settings', 'enable_strict_matching', event.target.checked)}
+                                                            className="h-5 w-5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                                                        />
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </section>
+
+                                        <section className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm xl:col-span-1">
+                                            <div>
+                                                <h3 className="text-lg font-black tracking-tight text-slate-900">Environment Configuration</h3>
+                                                <p className="mt-1 text-sm text-slate-600">Deployment secrets and API credentials. Keep sensitive values secure in production.</p>
+                                            </div>
+
+                                            <div className="mt-5 grid gap-4">
+                                                <label className="grid gap-2">
+                                                    <span className="text-sm font-semibold text-slate-700">Database URL</span>
+                                                    <input
+                                                        type="password"
+                                                        value={systemSettings.environment_config.database_url}
+                                                        onChange={(event) => updateSystemSection('environment_config', 'database_url', event.target.value)}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="postgresql://user:pass@host:port/db"
+                                                    />
+                                                    <p className="text-xs text-slate-500">⚠️ Change in code environment variable: DATABASE_URL</p>
+                                                </label>
+
+                                                <label className="grid gap-2">
+                                                    <span className="text-sm font-semibold text-slate-700">Email Host User</span>
+                                                    <input
+                                                        type="password"
+                                                        value={systemSettings.environment_config.email_host_user}
+                                                        onChange={(event) => updateSystemSection('environment_config', 'email_host_user', event.target.value)}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="your-email@gmail.com"
+                                                    />
+                                                    <p className="text-xs text-slate-500">⚠️ Change in code environment variable: EMAIL_HOST_USER</p>
+                                                </label>
+
+                                                <label className="grid gap-2">
+                                                    <span className="text-sm font-semibold text-slate-700">Email Host Password</span>
+                                                    <input
+                                                        type="password"
+                                                        value={systemSettings.environment_config.email_host_password}
+                                                        onChange={(event) => updateSystemSection('environment_config', 'email_host_password', event.target.value)}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="••••••••"
+                                                    />
+                                                    <p className="text-xs text-slate-500">⚠️ Change in code environment variable: EMAIL_HOST_PASSWORD</p>
+                                                </label>
+
+                                                <label className="grid gap-2">
+                                                    <span className="text-sm font-semibold text-slate-700">Gemini API Key</span>
+                                                    <input
+                                                        type="password"
+                                                        value={systemSettings.environment_config.gemini_api_key}
+                                                        onChange={(event) => updateSystemSection('environment_config', 'gemini_api_key', event.target.value)}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="••••••••"
+                                                    />
+                                                    <p className="text-xs text-slate-500">⚠️ Change in code environment variable: GEMINI_API_KEY</p>
+                                                </label>
+
+                                                <label className="grid gap-2">
+                                                    <span className="text-sm font-semibold text-slate-700">HuggingFace Token</span>
+                                                    <input
+                                                        type="password"
+                                                        value={systemSettings.environment_config.hf_token}
+                                                        onChange={(event) => updateSystemSection('environment_config', 'hf_token', event.target.value)}
+                                                        className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                                                        placeholder="••••••••"
+                                                    />
+                                                    <p className="text-xs text-slate-500">⚠️ Change in code environment variable: HF_TOKEN</p>
+                                                </label>
+                                            </div>
+
+                                            <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                                                ⚠️ <strong>Security Note:</strong> These values are stored in the database. Update corresponding environment variables in your deployment configuration (e.g., Railway, Heroku, .env files) to ensure consistency.
+                                            </p>
+                                        </section>
+
+                                        {settingsError ? (
+                                            <div className="xl:col-span-3 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                                                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                                                <span>{settingsError}</span>
+                                            </div>
+                                        ) : null}
+
+                                        <div className="xl:col-span-3 flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5">
+                                            <button
+                                                type="button"
+                                                onClick={loadSettings}
+                                                className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                                            >
+                                                Reset from server
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                disabled={settingsSaving || settingsLoading}
+                                                className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+                                            >
+                                                {settingsSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                                Save settings
+                                            </button>
+                                        </div>
+                                    </form>
+                                )}
+                            </>
+                        ) : null}
                     </div>
                 </div>
             </div>

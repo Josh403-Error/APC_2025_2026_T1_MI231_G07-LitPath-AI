@@ -240,10 +240,17 @@ def auth_login_view(request):
                 'success': False,
                 'message': 'Invalid email or password'
             }, status=status.HTTP_401_UNAUTHORIZED)
-        
+
+        # Block login for inactive accounts
+        if not user.is_active:
+            return Response({
+                'success': False,
+                'message': 'Account is inactive'
+            }, status=status.HTTP_403_FORBIDDEN)
+
         # Update last login
         user.update_last_login()
-        
+
         # Create new session
         session = Session.create_for_user(user)
         

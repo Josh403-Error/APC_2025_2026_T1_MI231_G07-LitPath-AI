@@ -208,6 +208,44 @@ class AdminUser(models.Model):
         return self.email
 
 
+class SystemSettings(models.Model):
+    """Singleton admin settings for AI, search, and environment configuration."""
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    ai_model_settings = models.JSONField(default=dict)
+    search_settings = models.JSONField(default=dict)
+    environment_config = models.JSONField(default=dict)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        UserAccount,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+    )
+
+    class Meta:
+        db_table = 'system_settings'
+
+    @classmethod
+    def get_solo(cls):
+        from .system_settings import clone_default_system_settings
+
+        defaults = clone_default_system_settings()
+        settings, _ = cls.objects.get_or_create(
+            id=1,
+            defaults={
+                'ai_model_settings': defaults['ai_model_settings'],
+                'search_settings': defaults['search_settings'],
+                'environment_config': defaults['environment_config'],
+            },
+        )
+        return settings
+
+    def __str__(self):
+        return 'System settings'
+
+
 class Bookmark(models.Model):
     """User bookmarks for research papers - Auto-delete after 30 days"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
