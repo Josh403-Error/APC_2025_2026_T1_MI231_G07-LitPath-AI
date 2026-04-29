@@ -93,6 +93,12 @@ const AdminDashboard = () => {
     const [showExportDropdown, setShowExportDropdown] = useState(false);
     const exportDropdownRef = useRef(null);
 
+    // ---------- Chart Refs for PDF Export ----------
+    const activityTrendsChartRef = useRef(null);
+    const citationActivityChartRef = useRef(null);
+    const usersByCategoryChartRef = useRef(null);
+    const ageDistributionChartRef = useRef(null);
+
     // ---------- Feedback Export Dropdown ----------
     const [showFeedbackExportDropdown, setShowFeedbackExportDropdown] = useState(false);
     const feedbackExportDropdownRef = useRef(null);
@@ -1528,187 +1534,380 @@ const AdminDashboard = () => {
     // ---------- Overview Export Data to PDF ----------
     const handleExportPDF = async () => {
         try {
-            // Dynamically import jsPDF
-            const { jsPDF } = await import('jspdf');
-            const doc = new jsPDF();
-            let yPos = 20;
-            const pageWidth = doc.internal.pageSize.width;
+            showToast('Generating PDF report...', 'info');
             
-            // 1. Generate a descriptive filter text for the export
+            // Dynamically import required libraries
+            const { jsPDF } = await import('jspdf');
+            const autoTable = (await import('jspdf-autotable')).default;
+            const html2canvas = (await import('html2canvas')).default;
+            
+            const doc = new jsPDF('p', 'mm', 'a4');
+            const pageWidth = doc.internal.pageSize.width;
+            const pageHeight = doc.internal.pageSize.height;
+            let yPos = 20;
+            
+            // Generate filter text for the report
             let filterText = '';
             if (overviewDateFilterType === 'Year') filterText = `Year ${overviewSelectedYear}`;
             else if (overviewDateFilterType === 'Month') filterText = `${new Date(0, overviewSelectedMonth - 1).toLocaleString('default', { month: 'long' })} ${overviewSelectedMonthYear}`;
             else if (overviewDateFilterType === 'Last 7 days') filterText = 'Last 7 days';
             else filterText = `${overviewCustomFrom} to ${overviewCustomTo}`;
-
-            // Show loading message
-            showToast('Generating PDF report...', 'info');
-
-            // Title
-            doc.setFontSize(18);
-            doc.text("LITPATH AI - DASHBOARD REPORT", pageWidth / 2, yPos, { align: 'center' });
-            yPos += 10;
             
-            // Report header
-            doc.setFontSize(12);
-            doc.text(`Date Filter Applied: ${filterText}`, 20, yPos);
-            yPos += 6;
-            doc.text(`Exported On: ${new Date().toLocaleString()}`, 20, yPos);
-            yPos += 10;
+            const exportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
             
-            // KPIs Section
+            // ============================================
+            // HEADER — Title and Subtitle
+            // ============================================
+            doc.setFillColor(30, 116, 188); // #1E74BC
+            doc.rect(0, 0, pageWidth, 25, 'F');
+            
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(22);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Thesis & Dissertation Usage Report', pageWidth / 2, 12, { align: 'center' });
+            
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`${filterText} | Exported: ${exportDate}`, pageWidth / 2, 20, { align: 'center' });
+            
+            yPos = 32;
+            
+            // ============================================
+            // SECTION 1: SUMMARY STATS — Clean labeled table
+            // ============================================
             doc.setFontSize(14);
-            doc.text("KEY PERFORMANCE INDICATORS", 20, yPos);
-            yPos += 8;
-            doc.setFontSize(10);
-            doc.text(`Total Theses: ${dashboardData.kpi.totalDocuments}`, 20, yPos);
-            yPos += 5;
-            doc.text(`Total Searches: ${dashboardData.kpi.totalSearches}`, 20, yPos);
-            yPos += 5;
-            doc.text(`Collection Utilisation (%): ${dashboardData.kpi.utilizationPercent}`, 20, yPos);
-            yPos += 5;
-            doc.text(`Avg Response Time (ms): ${dashboardData.kpi.avgResponseTime}`, 20, yPos);
-            yPos += 5;
-            doc.text(`Failed Queries: ${dashboardData.failedQueriesCount}`, 20, yPos);
-            yPos += 10;
-            
-            // Top Theses Section
-            doc.setFontSize(14);
-            doc.text("TOP THESES BROWSED", 20, yPos);
-            yPos += 8;
-            doc.setFontSize(10);
-            doc.text("Rank | Title | Author | Year | Degree | Views | Avg Rating", 20, yPos);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(30, 116, 188);
+            doc.text('Summary Statistics', 14, yPos);
             yPos += 5;
             
-            // Add top theses data
-            if (dashboardData.topTheses && dashboardData.topTheses.length > 0) {
-                dashboardData.topTheses.forEach((t, i) => {
-                    if (yPos > 250) { // Add new page if needed
-                        doc.addPage();
-                        yPos = 20;
-                    }
-                    
-                    const thesisLine = `${i + 1} | ${t.title.substring(0, 20)}... | ${t.author.substring(0, 15)}... | ${t.year || '-'} | ${t.degree || '-'} | ${t.view_count} | ${t.avg_rating || '-'}`;
-                    doc.text(thesisLine, 20, yPos);
-                    yPos += 5;
-                });
-            } else {
-                doc.text("No top theses data available.", 20, yPos);
-                yPos += 5;
+            const summaryStatsData = [
+                ['Total Theses', dashboardData.kpi.totalDocuments.toLocaleString()],
+                ['Total Searches', dashboardData.kpi.totalSearches.toLocaleString()],
+                ['Collection Utilisation', `${dashboardData.kpi.utilizationPercent}%`],
+                ['Avg Response Time', `${dashboardData.kpi.avgResponseTime} ms`],
+                ['Failed Queries', dashboardData.failedQueriesCount.toLocaleString()]
+            ];
+            
+            autoTable(doc, {
+                startY: yPos,
+                head: [['Metric', 'Value']],
+                body: summaryStatsData,
+                theme: 'striped',
+                headStyles: { fillColor: [30, 116, 188], textColor: 255, fontStyle: 'bold' },
+                alternateRowStyles: { fillColor: [245, 248, 250] },
+                margin: { left: 14, right: 14 },
+                columnStyles: {
+                    0: { cellWidth: 70, fontStyle: 'semibold' },
+                    1: { cellWidth: 60, fontStyle: 'bold' }
+                }
+            });
+            
+            yPos = doc.lastAutoTable.finalY + 12;
+            
+            // ============================================
+            // SECTION 2: TRENDING TOPICS — Numbered table
+            // ============================================
+            if (doc.lastAutoTable.finalY > pageHeight - 60) {
+                doc.addPage();
+                yPos = 20;
             }
             
-            yPos += 10;
-            
-            // Usage by Category Section
             doc.setFontSize(14);
-            doc.text("USAGE BY CATEGORY", 20, yPos);
-            yPos += 8;
-            doc.setFontSize(10);
-            doc.text("Category | User Count | Percentage (%)", 20, yPos);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(30, 116, 188);
+            doc.text('Trending Topics', 14, yPos);
             yPos += 5;
             
-            // Add usage by category data
-            if (dashboardData.usageByCategory && dashboardData.usageByCategory.length > 0) {
-                dashboardData.usageByCategory.forEach(c => {
-                    if (yPos > 250) { // Add new page if needed
-                        doc.addPage();
-                        yPos = 20;
-                    }
-                    
-                    const categoryLine = `${c.category.substring(0, 20)}... | ${c.views} | ${c.percentage}%`;
-                    doc.text(categoryLine, 20, yPos);
-                    yPos += 5;
-                });
-            } else {
-                doc.text("No usage by category data available.", 20, yPos);
-                yPos += 5;
+            const trendingTopicsData = dashboardData.trendingTopics.map((topic, i) => [
+                `${i + 1}`,
+                topic.subject,
+                topic.current_views.toLocaleString(),
+                `${topic.growth >= 0 ? '+' : ''}${topic.growth}%`
+            ]);
+            
+            autoTable(doc, {
+                startY: yPos,
+                head: [['#', 'Topic', 'Views', 'Growth']],
+                body: trendingTopicsData,
+                theme: 'striped',
+                headStyles: { fillColor: [30, 116, 188], textColor: 255, fontStyle: 'bold' },
+                alternateRowStyles: { fillColor: [245, 248, 250] },
+                margin: { left: 14, right: 14 },
+                columnStyles: {
+                    0: { cellWidth: 15, halign: 'center' },
+                    1: { cellWidth: 'auto' },
+                    2: { cellWidth: 30, halign: 'right', fontStyle: 'bold' },
+                    3: { cellWidth: 25, halign: 'right' }
+                }
+            });
+            
+            yPos = doc.lastAutoTable.finalY + 12;
+            
+            // ============================================
+            // SECTION 3: MOST VIEWED THESES — Table with rank, title, author, views
+            // ============================================
+            if (doc.lastAutoTable.finalY > pageHeight - 60) {
+                doc.addPage();
+                yPos = 20;
             }
             
-            yPos += 10;
-            
-            // Age Distribution Section
             doc.setFontSize(14);
-            doc.text("AGE DISTRIBUTION", 20, yPos);
-            yPos += 8;
-            doc.setFontSize(10);
-            doc.text("Age Group | User Count | Percentage (%)", 20, yPos);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(30, 116, 188);
+            doc.text('Most Viewed Theses', 14, yPos);
             yPos += 5;
             
-            // Add age distribution data
-            if (dashboardData.ageDistribution && dashboardData.ageDistribution.length > 0) {
-                dashboardData.ageDistribution.forEach(a => {
-                    if (yPos > 250) { // Add new page if needed
-                        doc.addPage();
-                        yPos = 20;
-                    }
-                    
-                    const ageLine = `${a.age} | ${a.count} | ${a.percentage}%`;
-                    doc.text(ageLine, 20, yPos);
-                    yPos += 5;
-                });
-            } else {
-                doc.text("No age distribution data available.", 20, yPos);
-                yPos += 5;
+            const topThesesData = dashboardData.topTheses.slice(0, 8).map((thesis, i) => [
+                `${i + 1}`,
+                thesis.title.length > 50 ? thesis.title.substring(0, 50) + '...' : thesis.title,
+                thesis.author || 'Unknown',
+                thesis.view_count.toLocaleString()
+            ]);
+            
+            autoTable(doc, {
+                startY: yPos,
+                head: [['Rank', 'Title', 'Author', 'Views']],
+                body: topThesesData,
+                theme: 'striped',
+                headStyles: { fillColor: [30, 116, 188], textColor: 255, fontStyle: 'bold' },
+                alternateRowStyles: { fillColor: [245, 248, 250] },
+                margin: { left: 14, right: 14 },
+                columnStyles: {
+                    0: { cellWidth: 15, halign: 'center', fontStyle: 'bold' },
+                    1: { cellWidth: 'auto' },
+                    2: { cellWidth: 40 },
+                    3: { cellWidth: 25, halign: 'right', fontStyle: 'bold' }
+                }
+            });
+            
+            yPos = doc.lastAutoTable.finalY + 12;
+            
+            // ============================================
+            // SECTION 4: USERS BY CATEGORY — Chart image + table
+            // ============================================
+            if (doc.lastAutoTable.finalY > pageHeight - 80) {
+                doc.addPage();
+                yPos = 20;
             }
             
-            yPos += 10;
-            
-            // Activity Trends Section
             doc.setFontSize(14);
-            doc.text("ACTIVITY TRENDS (Views)", 20, yPos);
-            yPos += 8;
-            doc.setFontSize(10);
-            doc.text("Date Range | Total Views", 20, yPos);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(30, 116, 188);
+            doc.text('Users by Category', 14, yPos);
             yPos += 5;
             
-            // Add activity trends data
-            if (dashboardData.trends && dashboardData.trends.length > 0) {
-                dashboardData.trends.forEach(t => {
-                    if (yPos > 250) { // Add new page if needed
+            // Capture Users by Category chart
+            if (usersByCategoryChartRef.current) {
+                try {
+                    const canvas = await html2canvas(usersByCategoryChartRef.current, {
+                        scale: 2,
+                        useCORS: true,
+                        backgroundColor: '#ffffff'
+                    });
+                    const imgData = canvas.toDataURL('image/png');
+                    const imgWidth = 80;
+                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                    
+                    if (yPos + imgHeight + 10 > pageHeight - 10) {
                         doc.addPage();
                         yPos = 20;
                     }
                     
-                    const trendLine = `${t.tooltipRange || t.label || t.month} | ${t.views}`;
-                    doc.text(trendLine, 20, yPos);
-                    yPos += 5;
-                });
-            } else {
-                doc.text("No activity trends data available.", 20, yPos);
-                yPos += 5;
+                    doc.addImage(imgData, 'PNG', 14, yPos, imgWidth, imgHeight);
+                    yPos += imgHeight + 8;
+                } catch (err) {
+                    console.warn('Failed to capture Users by Category chart:', err);
+                }
             }
             
-            yPos += 10;
+            // Users by Category table
+            const categoryData = dashboardData.usageByCategory.map(cat => [
+                cat.category,
+                cat.views.toLocaleString(),
+                `${cat.percentage}%`
+            ]);
             
-            // Citation Activity Section
+            autoTable(doc, {
+                startY: yPos,
+                head: [['Category', 'Users', 'Percentage']],
+                body: categoryData,
+                theme: 'striped',
+                headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold' },
+                alternateRowStyles: { fillColor: [245, 248, 250] },
+                margin: { left: 14, right: 14 },
+                columnStyles: {
+                    0: { cellWidth: 'auto', fontStyle: 'semibold' },
+                    1: { cellWidth: 30, halign: 'right' },
+                    2: { cellWidth: 30, halign: 'right', fontStyle: 'bold' }
+                }
+            });
+            
+            yPos = doc.lastAutoTable.finalY + 12;
+            
+            // ============================================
+            // SECTION 5: AGE DISTRIBUTION — Chart image + table
+            // ============================================
+            if (doc.lastAutoTable.finalY > pageHeight - 80) {
+                doc.addPage();
+                yPos = 20;
+            }
+            
             doc.setFontSize(14);
-            doc.text("CITATION ACTIVITY", 20, yPos);
-            yPos += 8;
-            doc.setFontSize(10);
-            doc.text(`Total Citations Copied: ${dashboardData.citationStats.total_copies}`, 20, yPos);
-            yPos += 5;
-            doc.text("Date Range | Copies", 20, yPos);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(30, 116, 188);
+            doc.text('Age Distribution', 14, yPos);
             yPos += 5;
             
-            // Add citation activity data
-            if (dashboardData.citationTrends && dashboardData.citationTrends.length > 0) {
-                dashboardData.citationTrends.forEach(c => {
-                    if (yPos > 250) { // Add new page if needed
+            // Capture Age Distribution chart
+            if (ageDistributionChartRef.current) {
+                try {
+                    const canvas = await html2canvas(ageDistributionChartRef.current, {
+                        scale: 2,
+                        useCORS: true,
+                        backgroundColor: '#ffffff'
+                    });
+                    const imgData = canvas.toDataURL('image/png');
+                    const imgWidth = 80;
+                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                    
+                    if (yPos + imgHeight + 10 > pageHeight - 10) {
                         doc.addPage();
                         yPos = 20;
                     }
                     
-                    const citationLine = `${c.tooltipRange || c.label || c.month} | ${c.copies}`;
-                    doc.text(citationLine, 20, yPos);
-                    yPos += 5;
-                });
-            } else {
-                doc.text("No citation activity data available.", 20, yPos);
-                yPos += 5;
+                    doc.addImage(imgData, 'PNG', 14, yPos, imgWidth, imgHeight);
+                    yPos += imgHeight + 8;
+                } catch (err) {
+                    console.warn('Failed to capture Age Distribution chart:', err);
+                }
+            }
+            
+            // Age Distribution table
+            const ageData = dashboardData.ageDistribution.map(age => [
+                age.age,
+                age.count.toLocaleString(),
+                `${age.percentage}%`
+            ]);
+            
+            autoTable(doc, {
+                startY: yPos,
+                head: [['Age Range', 'Count', 'Percentage']],
+                body: ageData,
+                theme: 'striped',
+                headStyles: { fillColor: [168, 85, 247], textColor: 255, fontStyle: 'bold' },
+                alternateRowStyles: { fillColor: [245, 248, 250] },
+                margin: { left: 14, right: 14 },
+                columnStyles: {
+                    0: { cellWidth: 'auto', fontStyle: 'semibold' },
+                    1: { cellWidth: 30, halign: 'right' },
+                    2: { cellWidth: 30, halign: 'right', fontStyle: 'bold' }
+                }
+            });
+            
+            yPos = doc.lastAutoTable.finalY + 12;
+            
+            // ============================================
+            // SECTION 6: TOP FAILED QUERIES — Table
+            // ============================================
+            if (doc.lastAutoTable.finalY > pageHeight - 60) {
+                doc.addPage();
+                yPos = 20;
+            }
+            
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(239, 68, 68);
+            doc.text('Top Failed Queries', 14, yPos);
+            yPos += 5;
+            
+            const failedQueriesData = dashboardData.failedQueries.slice(0, 10).map(query => [
+                query.query.length > 60 ? query.query.substring(0, 60) + '...' : query.query,
+                query.count.toLocaleString()
+            ]);
+            
+            autoTable(doc, {
+                startY: yPos,
+                head: [['Query', 'Count']],
+                body: failedQueriesData,
+                theme: 'striped',
+                headStyles: { fillColor: [239, 68, 68], textColor: 255, fontStyle: 'bold' },
+                alternateRowStyles: { fillColor: [254, 242, 242] },
+                margin: { left: 14, right: 14 },
+                columnStyles: {
+                    0: { cellWidth: 'auto' },
+                    1: { cellWidth: 30, halign: 'right', fontStyle: 'bold' }
+                }
+            });
+            
+            yPos = doc.lastAutoTable.finalY + 12;
+            
+            // ============================================
+            // SECTION 7: ACTIVITY TRENDS & CITATION ACTIVITY — Charts side by side
+            // ============================================
+            doc.addPage();
+            yPos = 20;
+            
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(30, 116, 188);
+            doc.text('Activity Trends & Citation Activity', 14, yPos);
+            yPos += 8;
+            
+            // Capture Activity Trends chart
+            if (activityTrendsChartRef.current) {
+                try {
+                    const canvas = await html2canvas(activityTrendsChartRef.current, {
+                        scale: 2,
+                        useCORS: true,
+                        backgroundColor: '#ffffff'
+                    });
+                    const imgData = canvas.toDataURL('image/png');
+                    const imgWidth = 85;
+                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                    
+                    doc.addImage(imgData, 'PNG', 14, yPos, imgWidth, imgHeight);
+                } catch (err) {
+                    console.warn('Failed to capture Activity Trends chart:', err);
+                }
+            }
+            
+            // Capture Citation Activity chart
+            if (citationActivityChartRef.current) {
+                try {
+                    const canvas = await html2canvas(citationActivityChartRef.current, {
+                        scale: 2,
+                        useCORS: true,
+                        backgroundColor: '#ffffff'
+                    });
+                    const imgData = canvas.toDataURL('image/png');
+                    const imgWidth = 85;
+                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                    
+                    doc.addImage(imgData, 'PNG', 105, yPos, imgWidth, imgHeight);
+                } catch (err) {
+                    console.warn('Failed to capture Citation Activity chart:', err);
+                }
+            }
+            
+            // ============================================
+            // FOOTER — Page numbers and timestamp
+            // ============================================
+            const pageCount = doc.internal.getNumberOfPages();
+            const footerText = `Generated: ${new Date().toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+            
+            for (let i = 1; i <= pageCount; i++) {
+                doc.setPage(i);
+                doc.setFontSize(8);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(156, 163, 175);
+                doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+                doc.text(footerText, 14, pageHeight - 10);
             }
             
             // Save the PDF
-            doc.save(`LitPathAI_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
+            const filename = `LitPathAI_ThesisDissertation_Report_${new Date().toISOString().slice(0, 10)}.pdf`;
+            doc.save(filename);
             showToast('Report exported to PDF successfully!', 'success');
         } catch (error) {
             console.error("Overview PDF export failed:", error);
@@ -3028,7 +3227,7 @@ const AdminDashboard = () => {
                                     <div className="col-span-12 lg:col-span-3 flex flex-col gap-2">
 
                                         {/* Users by Category */}
-                                        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 flex-1">
+                                        <div ref={usersByCategoryChartRef} className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 flex-1">
                                             <div className="flex items-center gap-1 mb-4">
                                                 <h3 className="font-bold text-gray-700 text-xs uppercase tracking-wide flex items-center gap-2">
                                                     <Users size={16} className="text-indigo-600" /> Users by Category
@@ -3075,7 +3274,7 @@ const AdminDashboard = () => {
                                         </div>
 
                                         {/* Age Distribution */}
-                                        <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 flex-1">
+                                        <div ref={ageDistributionChartRef} className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 flex-1">
                                             <div className="flex items-center gap-1 mb-3">
                                                 <h3 className="font-bold text-gray-700 text-xs uppercase tracking-wide flex items-center gap-2">
                                                     <Users size={16} className="text-purple-600" /> Age Distribution
@@ -3161,7 +3360,7 @@ const AdminDashboard = () => {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
 
                                     {/* Activity Trends */}
-                                    <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 min-h-[200px] flex flex-col">
+                                    <div ref={activityTrendsChartRef} className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 min-h-[200px] flex flex-col">
                                         <div className="flex items-center justify-between mb-3">
                                             <div className="flex items-center gap-1 flex-wrap">
                                                 <div className="flex items-center gap-1">
@@ -3326,7 +3525,7 @@ const AdminDashboard = () => {
                                     </div>
 
                                     {/* Citation Activity */}
-                                    <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 flex flex-col">
+                                    <div ref={citationActivityChartRef} className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 flex flex-col">
                                         <div className="flex items-center gap-1 mb-3 flex-wrap">
                                             <div className="flex items-center gap-1">
                                                 <h3 className="font-bold text-gray-700 text-xs uppercase tracking-wide flex items-center gap-2">
