@@ -86,9 +86,11 @@ const AdminDashboard = () => {
     const [showFeedbackDateDropdown, setShowFeedbackDateDropdown] = useState(false);
     const feedbackDateDropdownRef = useRef(null);
 
-    // ---------- Feedback Manager Rating Filter ----------
-    const [showRatingDropdown, setShowRatingDropdown] = useState(false);
-    const ratingDropdownRef = useRef(null);
+    // ---------- Feedback Manager Client Type & Status Filters ----------
+    const [showClientTypeDropdown, setShowClientTypeDropdown] = useState(false);
+    const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+    const clientTypeDropdownRef = useRef(null);
+    const statusDropdownRef = useRef(null);
 
     // ---------- Export Dropdown ----------
     const [showExportDropdown, setShowExportDropdown] = useState(false);
@@ -3997,34 +3999,82 @@ const AdminDashboard = () => {
 
                                     {/* Client Type filter dropdown */}
                                     <div className="relative">
-                                        <select
-                                            aria-label="Filter by client type"
-                                            value={feedbackCategoryFilter}
-                                            onChange={(e) => setFeedbackCategoryFilter(e.target.value)}
-                                            className="px-3 py-1.5 border border-gray-400 rounded-md bg-white text-gray-650 hover:bg-gray-100 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                                        <button
+                                            onClick={() => setShowClientTypeDropdown(!showClientTypeDropdown)}
+                                            className="flex items-center space-x-2 px-3 py-1.5 border border-gray-400 rounded-md bg-white text-gray-650 hover:bg-gray-100 text-xs font-medium"
                                         >
-                                            <option value="All">All Client Types</option>
-                                            <option value="Student">Student</option>
-                                            <option value="Faculty">Faculty</option>
-                                            <option value="DOST">DOST</option>
-                                            <option value="Librarian">Librarian</option>
-                                            <option value="Guest">Guest</option>
-                                        </select>
+                                            <span>
+                                                {feedbackCategoryFilter === 'All' ? 'All Client Types' : feedbackCategoryFilter}
+                                            </span>
+                                            <ChevronDown size={14} className={`transition-transform ${showClientTypeDropdown ? 'rotate-180' : ''}`} />
+                                        </button>
+
+                                        {showClientTypeDropdown && (
+                                            <div className="absolute top-full right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-xl z-30 min-w-[160px] p-1">
+                                                {[
+                                                    { value: 'All', label: 'All Client Types' },
+                                                    { value: 'Student', label: 'Student' },
+                                                    { value: 'Faculty', label: 'Faculty' },
+                                                    { value: 'DOST', label: 'DOST' },
+                                                    { value: 'Librarian', label: 'Librarian' },
+                                                    { value: 'Guest', label: 'Guest' }
+                                                ].map(option => (
+                                                    <button
+                                                        key={option.value}
+                                                        onClick={() => {
+                                                            setFeedbackCategoryFilter(option.value);
+                                                            setShowClientTypeDropdown(false);
+                                                        }}
+                                                        className={`block w-full text-left px-3 py-2 text-xs rounded-md ${
+                                                            feedbackCategoryFilter === option.value
+                                                                ? 'bg-blue-50 text-blue-600 font-bold'
+                                                                : 'hover:bg-gray-50'
+                                                        }`}
+                                                    >
+                                                        {option.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Status filter dropdown */}
                                     <div className="relative">
-                                        <select
-                                            aria-label="Filter by status"
-                                            value={feedbackStatusFilter}
-                                            onChange={(e) => setFeedbackStatusFilter(e.target.value)}
-                                            className="px-3 py-1.5 border border-gray-400 rounded-md bg-white text-gray-650 hover:bg-gray-100 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                                        <button
+                                            onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+                                            className="flex items-center space-x-2 px-3 py-1.5 border border-gray-400 rounded-md bg-white text-gray-650 hover:bg-gray-100 text-xs font-medium"
                                         >
-                                            <option value="All">All Status</option>
-                                            <option value="Pending">Pending</option>
-                                            <option value="Reviewed">Reviewed</option>
-                                            <option value="Resolved">Resolved</option>
-                                        </select>
+                                            <span>
+                                                {feedbackStatusFilter === 'All' ? 'All Status' : feedbackStatusFilter}
+                                            </span>
+                                            <ChevronDown size={14} className={`transition-transform ${showStatusDropdown ? 'rotate-180' : ''}`} />
+                                        </button>
+
+                                        {showStatusDropdown && (
+                                            <div className="absolute top-full right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-xl z-30 min-w-[140px] p-1">
+                                                {[
+                                                    { value: 'All', label: 'All Status' },
+                                                    { value: 'Pending', label: 'Pending' },
+                                                    { value: 'Reviewed', label: 'Reviewed' },
+                                                    { value: 'Resolved', label: 'Resolved' }
+                                                ].map(option => (
+                                                    <button
+                                                        key={option.value}
+                                                        onClick={() => {
+                                                            setFeedbackStatusFilter(option.value);
+                                                            setShowStatusDropdown(false);
+                                                        }}
+                                                        className={`block w-full text-left px-3 py-2 text-xs rounded-md ${
+                                                            feedbackStatusFilter === option.value
+                                                                ? 'bg-blue-50 text-blue-600 font-bold'
+                                                                : 'hover:bg-gray-50'
+                                                        }`}
+                                                    >
+                                                        {option.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
