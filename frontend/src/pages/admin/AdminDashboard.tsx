@@ -72,7 +72,8 @@ const AdminDashboard = () => {
 
     // ---------- Feedback States ----------
     const [feedbacks, setFeedbacks] = useState([]);
-    const [feedbackFilter, setFeedbackFilter] = useState('All');
+    const [feedbackCategoryFilter, setFeedbackCategoryFilter] = useState('All');
+    const [feedbackStatusFilter, setFeedbackStatusFilter] = useState('All');
 
     // ---------- Feedback Manager Date Filter ----------
     const feedbackDateFilterOptions = ['All', 'Year', 'Month', 'Last 7 days', 'Custom range'];
@@ -674,7 +675,7 @@ const AdminDashboard = () => {
     // Reset pagination when filters change
     useEffect(() => {
         setCurrentFeedbackPage(1);
-    }, [feedbackFilter, feedbackDateFilterType, feedbackSelectedYear, feedbackSelectedMonth, feedbackSelectedMonthYear, feedbackCustomFrom, feedbackCustomTo]);
+    }, [feedbackCategoryFilter, feedbackStatusFilter, feedbackDateFilterType, feedbackSelectedYear, feedbackSelectedMonth, feedbackSelectedMonthYear, feedbackCustomFrom, feedbackCustomTo]);
 
     // ---------- Feedback & Ratings ----------
     const fetchFeedback = async () => {
@@ -819,10 +820,11 @@ const AdminDashboard = () => {
         );
     };
 
-    // Helper to get filtered feedbacks based on current rating and date filters
+    // Helper to get filtered feedbacks based on current client type, status and date filters
     const getFilteredFeedbacks = () => {
         return feedbacks
-            .filter(fb => feedbackFilter === 'All' || fb.litpath_rating?.toString() === feedbackFilter)
+            .filter(fb => feedbackCategoryFilter === 'All' || fb.client_type === feedbackCategoryFilter)
+            .filter(fb => feedbackStatusFilter === 'All' || fb.status === feedbackStatusFilter)
             .filter(fb => isFeedbackInDateRange(fb.created_at));
     };
 
@@ -3993,45 +3995,36 @@ const AdminDashboard = () => {
                                         )}
                                     </div>
 
-                                    {/* Rating filter dropdown (custom, matching date filter) */}
-                                    <div className="relative" ref={ratingDropdownRef}>
-                                        <button
-                                            onClick={() => setShowRatingDropdown(!showRatingDropdown)}
-                                            className="flex items-center space-x-2 px-3 py-1.5 border border-gray-400 rounded-md bg-white text-gray-650 hover:bg-gray-100 text-xs font-medium"
+                                    {/* Client Type filter dropdown */}
+                                    <div className="relative">
+                                        <select
+                                            aria-label="Filter by client type"
+                                            value={feedbackCategoryFilter}
+                                            onChange={(e) => setFeedbackCategoryFilter(e.target.value)}
+                                            className="px-3 py-1.5 border border-gray-400 rounded-md bg-white text-gray-650 hover:bg-gray-100 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                                         >
-                                            <span>
-                                                {feedbackFilter === 'All' ? 'All ratings' : `${feedbackFilter} Stars`}
-                                            </span>
-                                            <ChevronDown size={14} className={`transition-transform ${showRatingDropdown ? 'rotate-180' : ''}`} />
-                                        </button>
+                                            <option value="All">All Client Types</option>
+                                            <option value="Student">Student</option>
+                                            <option value="Faculty">Faculty</option>
+                                            <option value="DOST">DOST</option>
+                                            <option value="Librarian">Librarian</option>
+                                            <option value="Guest">Guest</option>
+                                        </select>
+                                    </div>
 
-                                        {showRatingDropdown && (
-                                            <div className="absolute top-full right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-xl z-30 min-w-[140px] p-1">
-                                                {[
-                                                    { value: 'All', label: 'All ratings' },
-                                                    { value: '5', label: '5 Stars' },
-                                                    { value: '4', label: '4 Stars' },
-                                                    { value: '3', label: '3 Stars' },
-                                                    { value: '2', label: '2 Stars' },
-                                                    { value: '1', label: '1 Star' }
-                                                ].map(option => (
-                                                    <button
-                                                        key={option.value}
-                                                        onClick={() => {
-                                                            setFeedbackFilter(option.value);
-                                                            setShowRatingDropdown(false);
-                                                        }}
-                                                        className={`block w-full text-left px-3 py-2 text-xs rounded-md ${
-                                                            feedbackFilter === option.value
-                                                                ? 'bg-blue-50 text-blue-600 font-bold'
-                                                                : 'hover:bg-gray-50'
-                                                        }`}
-                                                    >
-                                                        {option.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
+                                    {/* Status filter dropdown */}
+                                    <div className="relative">
+                                        <select
+                                            aria-label="Filter by status"
+                                            value={feedbackStatusFilter}
+                                            onChange={(e) => setFeedbackStatusFilter(e.target.value)}
+                                            className="px-3 py-1.5 border border-gray-400 rounded-md bg-white text-gray-650 hover:bg-gray-100 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                                        >
+                                            <option value="All">All Status</option>
+                                            <option value="Pending">Pending</option>
+                                            <option value="Reviewed">Reviewed</option>
+                                            <option value="Resolved">Resolved</option>
+                                        </select>
                                     </div>
                                 </div>
                             </div>
@@ -4053,9 +4046,7 @@ const AdminDashboard = () => {
                                             <tr><td colSpan="8" className="px-6 py-10 text-center text-gray-500 text-sm">No feedback records found.</td></tr>
                                         ) : (
                                             (() => {
-                                                const filtered = feedbacks
-                                                    .filter(fb => feedbackFilter === 'All' || fb.litpath_rating?.toString() === feedbackFilter)
-                                                    .filter(fb => isFeedbackInDateRange(fb.created_at));
+                                                const filtered = getFilteredFeedbacks();
                                                 
                                                 if (filtered.length === 0) {
                                                     return (
@@ -4093,7 +4084,7 @@ const AdminDashboard = () => {
                                                             {fb.region || '—'}
                                                         </td>
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                                                            {fb.category || '—'}
+                                                            {fb.admin_category || fb.category || '—'}
                                                         </td>
                                                         <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
                                                             {fb.message_comment || <span className="text-gray-400 italic">No comment</span>}
@@ -4117,9 +4108,7 @@ const AdminDashboard = () => {
                             
                             {/* Pagination Controls */}
                             {feedbacks.length > 0 && (() => {
-                                const filtered = feedbacks
-                                    .filter(fb => feedbackFilter === 'All' || fb.litpath_rating?.toString() === feedbackFilter)
-                                    .filter(fb => isFeedbackInDateRange(fb.created_at));
+                                const filtered = getFilteredFeedbacks();
                                 const totalPages = Math.ceil(filtered.length / feedbackItemsPerPage);
                                 
                                 return (
