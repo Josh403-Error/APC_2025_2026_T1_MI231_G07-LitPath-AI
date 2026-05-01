@@ -1,15 +1,24 @@
-rank-bm25
-chromadb
-python-dotenv
-supabase
-torch
-sentence-transformers
-transformers
-tokenizers
-Pillow
-PyPDF2
-pytesseract
-pdf2image
-numpy
-huggingface_hub
-requests
+# ===== CORE NLP & ML =====
+transformers>=4.30.0
+sentence-transformers>=2.2.0
+torch>=2.0.0
+tokenizers>=0.13.0
+
+# ===== SEARCH & RANKING =====
+rank-bm25>=0.2.2
+chromadb>=0.4.0
+
+# ===== DOCUMENT PROCESSING =====
+PyPDF2>=3.0.0
+pytesseract>=0.3.10
+pdf2image>=1.16.3
+Pillow>=10.0.0
+
+# ===== DATA PROCESSING =====
+numpy>=1.24.0
+huggingface_hub>=0.20.0
+
+# ===== API & UTILITIES =====
+requests>=2.31.0
+python-dotenv>=1.0.0
+supabase>=2.0.0
