@@ -1729,16 +1729,15 @@ const AdminDashboard = () => {
                 }
             }
             
-            // Users by Category table
+            // Users by Category table (2 columns: Category and Percentage)
             const categoryData = dashboardData.usageByCategory.map(cat => [
                 cat.category,
-                cat.views.toLocaleString(),
                 `${cat.percentage}%`
             ]);
             
             autoTable(doc, {
                 startY: yPos,
-                head: [['Category', 'Users', 'Percentage']],
+                head: [['Category', 'Percentage']],
                 body: categoryData,
                 theme: 'striped',
                 headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold' },
@@ -1746,8 +1745,7 @@ const AdminDashboard = () => {
                 margin: { left: 14, right: 14 },
                 columnStyles: {
                     0: { cellWidth: 'auto', fontStyle: 'semibold' },
-                    1: { cellWidth: 30, halign: 'right' },
-                    2: { cellWidth: 30, halign: 'right', fontStyle: 'bold' }
+                    1: { cellWidth: 40, halign: 'right', fontStyle: 'bold' }
                 }
             });
             
@@ -1851,7 +1849,7 @@ const AdminDashboard = () => {
             yPos = doc.lastAutoTable.finalY + 12;
             
             // ============================================
-            // SECTION 7: ACTIVITY TRENDS & CITATION ACTIVITY — Charts side by side
+            // SECTION 7: ACTIVITY TRENDS & CITATION ACTIVITY — Charts stacked vertically
             // ============================================
             doc.addPage();
             yPos = 20;
@@ -1862,7 +1860,7 @@ const AdminDashboard = () => {
             doc.text('Activity Trends & Citation Activity', 14, yPos);
             yPos += 8;
             
-            // Capture Activity Trends chart
+            // Capture Activity Trends chart (full width, larger height)
             if (activityTrendsChartRef.current) {
                 try {
                     const canvas = await html2canvas(activityTrendsChartRef.current, {
@@ -1871,16 +1869,27 @@ const AdminDashboard = () => {
                         backgroundColor: '#ffffff'
                     });
                     const imgData = canvas.toDataURL('image/png');
-                    const imgWidth = 85;
+                    const imgWidth = 180; // Full width (A4 page width - margins)
                     const imgHeight = (canvas.height * imgWidth) / canvas.width;
                     
-                    doc.addImage(imgData, 'PNG', 14, yPos, imgWidth, imgHeight);
+                    // Ensure chart height is at least 80mm (~300px equivalent)
+                    const minChartHeight = 80;
+                    const finalImgHeight = Math.max(imgHeight, minChartHeight);
+                    
+                    // Check if we need a new page
+                    if (yPos + finalImgHeight + 10 > pageHeight - 20) {
+                        doc.addPage();
+                        yPos = 20;
+                    }
+                    
+                    doc.addImage(imgData, 'PNG', 14, yPos, imgWidth, finalImgHeight);
+                    yPos += finalImgHeight + 15; // Add spacing between charts
                 } catch (err) {
                     console.warn('Failed to capture Activity Trends chart:', err);
                 }
             }
             
-            // Capture Citation Activity chart
+            // Capture Citation Activity chart (full width, larger height)
             if (citationActivityChartRef.current) {
                 try {
                     const canvas = await html2canvas(citationActivityChartRef.current, {
@@ -1889,10 +1898,21 @@ const AdminDashboard = () => {
                         backgroundColor: '#ffffff'
                     });
                     const imgData = canvas.toDataURL('image/png');
-                    const imgWidth = 85;
+                    const imgWidth = 180; // Full width (A4 page width - margins)
                     const imgHeight = (canvas.height * imgWidth) / canvas.width;
                     
-                    doc.addImage(imgData, 'PNG', 105, yPos, imgWidth, imgHeight);
+                    // Ensure chart height is at least 80mm (~300px equivalent)
+                    const minChartHeight = 80;
+                    const finalImgHeight = Math.max(imgHeight, minChartHeight);
+                    
+                    // Check if we need a new page
+                    if (yPos + finalImgHeight + 10 > pageHeight - 20) {
+                        doc.addPage();
+                        yPos = 20;
+                    }
+                    
+                    doc.addImage(imgData, 'PNG', 14, yPos, imgWidth, finalImgHeight);
+                    yPos += finalImgHeight + 10;
                 } catch (err) {
                     console.warn('Failed to capture Citation Activity chart:', err);
                 }
