@@ -61,3 +61,9 @@ desktop.ini
 *.tmp
 *.temp
 .cache/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
