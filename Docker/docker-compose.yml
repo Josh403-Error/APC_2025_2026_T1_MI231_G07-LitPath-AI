@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15
+    container_name: litpath-db
+    environment:
+      POSTGRES_DB: litpath_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ChromaDB Vector Database
+  chromadb:
+    image: ghcr.io/chroma-core/chroma:latest
+    container_name: litpath-chromadb
+    environment:
+      - CHROMA_DB_IMPL=chromadb.db.postgres.PostgreSQLDB
+      - CHROMA_SERVER_HTTP_PORT=8000
+      - CHROMA_POSTGRESQL_CONN=postgresql://postgres:postgres@db:5432/litpath_db
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    volumes:
+      - chroma_data:/chroma/chroma
+
+  # Backend Service
+  backend:
+    build:
+      context: ../
+      dockerfile: Docker/Dockerfile.backend
+    container_name: litpath-backend
+    environment:
+      - DEBUG=0
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/litpath_db
+      - DB_NAME=litpath_db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_HOST=db
+      - DB_PORT=5432
+      - CHROMA_DB_PATH=/app/RAG/chromadb_data
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - chromadb
+    volumes:
+      - ./backend_media:/app/media
+      - ./backend_static:/app/staticfiles
+      - ../RAG/theses:/app/RAG/theses
+    restart: unless-stopped
+
+  # Frontend Service
+  frontend:
+    build:
+      context: ../
+      dockerfile: Docker/Dockerfile.frontend
+    container_name: litpath-frontend
+    environment:
+      - NODE_ENV=production
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend_build:/app/dist
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: litpath-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+      - frontend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  chroma_data:

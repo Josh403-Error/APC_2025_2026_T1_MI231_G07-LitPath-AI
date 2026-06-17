@@ -29,7 +29,11 @@ def remove_bloat_files():
         # Log files
         project_root / "backend.log",
         
-        # Backup files
+        # Backup file# Generate SSH key on Ubuntu server (if not already done)
+ssh-keygen -t rsa -b 4096 -C "your_email@example.com"
+
+# Copy the public key to your clipboard
+cat ~/.ssh/id_rsa.pubs
         project_root / ".env.backup",
         
         # Redundant files that duplicate seed_users functionality
