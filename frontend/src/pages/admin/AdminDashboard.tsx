@@ -15,6 +15,7 @@ import dostLogo from "../../assets/images/dost-logo.png";
 import { API_BASE_URL, apiHeaders } from '../../services/api';
 import { formatNumber } from '../../lib/formatNumber';
 import { getPasswordRequirementChecks, validatePasswordStrength } from '../../lib/passwordValidation';
+import PasswordRequirements from '../../components/PasswordRequirements';
 import { getRoleLabel, ROLE_PATHS } from '../../lib/roleLabels';
 
 const hideDefaultPasswordEyeStyles = `
@@ -65,7 +66,7 @@ const AdminDashboard = () => {
         trendingTopics: [],
         topTheses: [],
         usageByCategory: [],
-        ageDistribution: [],
+        genderDistribution: [],
         citationTrends: [],
         citationStats: { total_copies: 0, top_cited: [] },
         trends: [], // for activity trends (monthly/weekly/daily)
@@ -89,6 +90,8 @@ const AdminDashboard = () => {
     const [showFeedbackDateDropdown, setShowFeedbackDateDropdown] = useState(false);
     const feedbackDateDropdownRef = useRef(null);
 
+    const clientTypeFilterOptions = ['Student', 'DOST Employee', 'Other Government Employee', 'Librarian/Library Staff', 'Teaching Personnel', 'Administrative Personnel', 'Researcher', 'Others'];
+
     // ---------- Feedback Manager Client Type & Status Filters ----------
     const [showClientTypeDropdown, setShowClientTypeDropdown] = useState(false);
     const [showStatusDropdown, setShowStatusDropdown] = useState(false);
@@ -103,7 +106,7 @@ const AdminDashboard = () => {
     const activityTrendsChartRef = useRef(null);
     const citationActivityChartRef = useRef(null);
     const usersByCategoryChartRef = useRef(null);
-    const ageDistributionChartRef = useRef(null);
+    const genderDistributionChartRef = useRef(null);
     const ratingDistributionChartRef = useRef(null);
     const ratingTrendChartRef = useRef(null);
 
@@ -114,6 +117,10 @@ const AdminDashboard = () => {
     // ---------- Ratings Export Dropdown ----------
     const [showRatingsExportDropdown, setShowRatingsExportDropdown] = useState(false);
     const ratingsExportDropdownRef = useRef(null);
+
+    // ---------- Ratings Filter Dropdown ----------
+    const [showRatingDropdown, setShowRatingDropdown] = useState(false);
+    const ratingDropdownRef = useRef(null);
 
     // ---------- Feedback Manager Pagination ----------
     const [currentFeedbackPage, setCurrentFeedbackPage] = useState(1);
@@ -146,6 +153,10 @@ const AdminDashboard = () => {
     // ---------- Account Settings ----------
     const [showAccountSettings, setShowAccountSettings] = useState(false);
     const [settingsTab, setSettingsTab] = useState('profile');
+
+    // ---------- Dormant Materials Modal ----------
+    const [showDormantMaterialsModal, setShowDormantMaterialsModal] = useState(false);
+    const [dormantMaterialsList, setDormantMaterialsList] = useState([]);
 
     // ---------- Feedback Details Modal ----------
     const [selectedFeedback, setSelectedFeedback] = useState(null);
@@ -346,16 +357,16 @@ const AdminDashboard = () => {
         } catch (error) { console.error(error); }
     };
 
-    const fetchAgeDistribution = async () => {
+    const fetchGenderDistribution = async () => {
         const { from, to } = getDateRange();
         if (overviewDateFilterType === 'Custom range' && (!from || !to)) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/dashboard/age-distribution/?from=${from}&to=${to}`, {
+            const res = await fetch(`${API_BASE_URL}/dashboard/gender-distribution/?from=${from}&to=${to}`, {
                 headers: apiHeaders(true)
             });
             if (res.ok) {
                 const data = await res.json();
-                setDashboardData(prev => ({ ...prev, ageDistribution: data }));
+                setDashboardData(prev => ({ ...prev, genderDistribution: data }));
             }
         } catch (error) { console.error(error); }
     };
@@ -575,7 +586,7 @@ const AdminDashboard = () => {
             fetchTrendingTopics(),
             fetchTopTheses(),
             fetchUsageByCategory(),
-            fetchAgeDistribution(),
+            fetchGenderDistribution(),
             fetchCitationStats(),
             fetchCitationTrends(),
             fetchTrends()
@@ -862,6 +873,13 @@ const AdminDashboard = () => {
             .filter(fb => isFeedbackInDateRange(fb.created_at));
     };
 
+    const getDisplayClientType = (feedback) => {
+        if (!feedback) return '—';
+        if (feedback.display_client_type) return feedback.display_client_type;
+        if (feedback.client_type === 'Others' && feedback.client_type_other) return feedback.client_type_other;
+        return feedback.client_type || '—';
+    };
+
     
     // ---------- Feedback Manager Export Data to CSV ----------
     const handleFeedbackExportCSV = () => {
@@ -938,7 +956,7 @@ const AdminDashboard = () => {
                 rows.push([
                     escape(new Date(fb.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })),
                     escape(ratingText),
-                    escape(fb.client_type || ''),
+                    escape(getDisplayClientType(fb)),
                     escape(fb.region || ''),
                     fb.admin_category && fb.admin_category.trim() !== '' ? escape(fb.admin_category) : 'N/A',
                     escape(comment),
@@ -1039,7 +1057,7 @@ const AdminDashboard = () => {
                 yPos += 5;
                 doc.text(`Rating: ${ratingText}`, 25, yPos);
                 yPos += 5;
-                doc.text(`Category: ${fb.client_type || 'N/A'}`, 25, yPos);
+                doc.text(`Category: ${getDisplayClientType(fb)}`, 25, yPos);
                 yPos += 5;
                 doc.text(`Region: ${fb.region || 'N/A'}`, 25, yPos);
                 yPos += 5;
@@ -1468,7 +1486,7 @@ const AdminDashboard = () => {
         ratingsDateFilterType === 'Custom range' ? 'previous period' : '';
 
     
-    // ---------- Overview Export Data to CSV ----------
+    // ---------- Usage Analytics Export Data to CSV ----------
     const handleExportCSV = () => {
         try {
             // 1. Generate a descriptive subtitle for the export
@@ -1529,11 +1547,11 @@ const AdminDashboard = () => {
             });
             addRow([]);
 
-            // --- AGE DISTRIBUTION ---
-            addRow(["AGE DISTRIBUTION"]);
-            addRow(["Age Group", "User Count", "Percentage (%)"]);
-            dashboardData.ageDistribution.forEach(a => {
-                addRow([a.age, a.count, a.percentage]);
+            // --- GENDER DISTRIBUTION ---
+            addRow(["GENDER DISTRIBUTION"]);
+            addRow(["Gender", "User Count", "Percentage (%)"]);
+            dashboardData.genderDistribution.forEach(g => {
+                addRow([g.gender, g.count, g.percentage]);
             });
             addRow([]);
 
@@ -1575,7 +1593,7 @@ const AdminDashboard = () => {
         }
     };
 
-    // ---------- Overview Export Data to PDF ----------
+    // ---------- Usage Analytics Export Data to PDF ----------
     const handleExportPDF = async () => {
         try {
             showToast('Generating PDF report...', 'info');
@@ -1594,13 +1612,41 @@ const AdminDashboard = () => {
             const sanitizeText = (text) => {
                 if (!text) return '';
                 return String(text)
-                    .replace(/\u03B4/g, 'δ') // Greek delta
-                    .replace(/\u03B1/g, 'α') // Greek alpha
-                    .replace(/\u03B2/g, 'β') // Greek beta
-                    .replace(/\u03C0/g, 'π') // Greek pi
-                    .replace(/\u2212/g, '−') // Proper minus sign
+                    // Handle problematic Unicode characters that don't render well in courier font
+                    .replace(/º/g, 'o') // Masculine ordinal indicator to 'o'
+                    .replace(/ª/g, 'a') // Feminine ordinal indicator to 'a'
+                    .replace(/°/g, 'o') // Degree symbol to 'o'
+                    .replace(/²/g, '^2') // Superscript 2 to ^2
+                    .replace(/³/g, '^3') // Superscript 3 to ^3
+                    .replace(/¹/g, '^1') // Superscript 1 to ^1
+                    .replace(/×/g, 'x') // Multiplication sign to 'x'
+                    .replace(/÷/g, '/') // Division sign to /
+                    .replace(/´/g, "'") // Acute accent to apostrophe
+                    .replace(/`/g, "'") // Grave accent to apostrophe
+                    .replace(/¨/g, '') // Diaeresis to empty
+                    .replace(/¯/g, '-') // Macron to dash
+                    .replace(/µ/g, 'u') // Micro sign to 'u'
+                    .replace(/·/g, '.') // Middle dot to period
+                    .replace(/•/g, '-') // Bullet to dash
+                    .replace(/¢/g, 'c') // Cent sign
+                    .replace(/£/g, '') // Pound sign
+                    .replace(/¤/g, '') // Currency sign
+                    .replace(/¥/g, '') // Yen sign
+                    .replace(/§/g, '') // Section sign
+                    .replace(/¶/g, '') // Pilcrow
+                    // Handle dashes and quotes
+                    .replace(/\u2212/g, '-') // Proper minus sign
+                    .replace(/[\u2013\u2014]/g, '-') // En/Em dash to hyphen
+                    .replace(/[\u2018\u2019]/g, "'") // Smart quotes to apostrophe
+                    .replace(/[\u201C\u201D]/g, '"') // Smart double quotes to regular quotes
+                    // Remove any remaining non-ASCII characters that aren't handled
+                    .replace(/[^\x20-\x7E]/g, ' ')
+                    .replace(/\s+/g, ' ') // Normalize multiple spaces
                     .trim();
             };
+            
+            // Ensure PDF uses proper font configuration
+            doc.setFont('courier', 'normal');
             
             // Helper function to calculate optimal table width and column distributions
             const calculateOptimalTableWidth = (proportionArray) => {
@@ -1636,12 +1682,12 @@ const AdminDashboard = () => {
             
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(22);
-            doc.setFont('helvetica', 'bold');
-            doc.text('Thesis & Dissertation Usage Report', pageWidth / 2, 12, { align: 'center' });
+            doc.setFont('courier', 'bold');
+            doc.text(sanitizeText('Thesis & Dissertation Usage Report'), pageWidth / 2, 12, { align: 'center' });
             
             doc.setFontSize(11);
-            doc.setFont('helvetica', 'normal');
-            doc.text(`${filterText} | Exported: ${exportDate}`, pageWidth / 2, 20, { align: 'center' });
+            doc.setFont('courier', 'normal');
+            doc.text(sanitizeText(`${filterText} | Exported: ${exportDate}`), pageWidth / 2, 20, { align: 'center' });
             
             yPos = 32;
             
@@ -1649,9 +1695,9 @@ const AdminDashboard = () => {
             // SECTION 1: SUMMARY STATS — Clean labeled table
             // ============================================
             doc.setFontSize(14);
-            doc.setFont('helvetica', 'bold');
+            doc.setFont('courier', 'bold');
             doc.setTextColor(30, 116, 188);
-            doc.text('Summary Statistics', 14, yPos);
+            doc.text(sanitizeText('Summary Statistics'), 14, yPos);
             yPos += 5;
             
             const summaryStatsData = [
@@ -1690,9 +1736,9 @@ const AdminDashboard = () => {
             }
             
             doc.setFontSize(14);
-            doc.setFont('helvetica', 'bold');
+            doc.setFont('courier', 'bold');
             doc.setTextColor(30, 116, 188);
-            doc.text('Trending Topics', 14, yPos);
+            doc.text(sanitizeText('Trending Topics'), 14, yPos);
             yPos += 5;
             
             const trendingTopicsData = dashboardData.trendingTopics.map((topic, i) => [
@@ -1732,9 +1778,9 @@ const AdminDashboard = () => {
             }
             
             doc.setFontSize(14);
-            doc.setFont('helvetica', 'bold');
+            doc.setFont('courier', 'bold');
             doc.setTextColor(30, 116, 188);
-            doc.text('Most Viewed Theses', 14, yPos);
+            doc.text(sanitizeText('Most Viewed Theses'), 14, yPos);
             yPos += 5;
             
             const topThesesData = dashboardData.topTheses.slice(0, 10).map((thesis, i) => [
@@ -1774,34 +1820,11 @@ const AdminDashboard = () => {
             }
             
             doc.setFontSize(14);
-            doc.setFont('helvetica', 'bold');
+            doc.setFont('courier', 'bold');
             doc.setTextColor(30, 116, 188);
-            doc.text('Users by Category', 14, yPos);
+            doc.text(sanitizeText('Users by Category'), 14, yPos);
             yPos += 5;
             
-            // Capture Users by Category chart
-            if (usersByCategoryChartRef.current) {
-                try {
-                    const canvas = await html2canvas(usersByCategoryChartRef.current, {
-                        scale: 2,
-                        useCORS: true,
-                        backgroundColor: '#ffffff'
-                    });
-                    const imgData = canvas.toDataURL('image/png');
-                    const imgWidth = 80;
-                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-                    
-                    if (yPos + imgHeight + 10 > pageHeight - 10) {
-                        doc.addPage();
-                        yPos = 20;
-                    }
-                    
-                    doc.addImage(imgData, 'PNG', 14, yPos, imgWidth, imgHeight);
-                    yPos += imgHeight + 8;
-                } catch (err) {
-                    console.warn('Failed to capture Users by Category chart:', err);
-                }
-            }
             
             // Users by Category table (2 columns: Category and Percentage)
             const categoryData = dashboardData.usageByCategory.map(cat => [
@@ -1829,7 +1852,7 @@ const AdminDashboard = () => {
             yPos = doc.lastAutoTable.finalY + 12;
             
             // ============================================
-            // SECTION 5: AGE DISTRIBUTION — Chart image + table
+            // SECTION 5: GENDER DISTRIBUTION — Chart image + table
             // ============================================
             if (doc.lastAutoTable.finalY > pageHeight - 80) {
                 doc.addPage();
@@ -1837,33 +1860,33 @@ const AdminDashboard = () => {
             }
             
             doc.setFontSize(14);
-            doc.setFont('helvetica', 'bold');
+            doc.setFont('courier', 'bold');
             doc.setTextColor(30, 116, 188);
-            doc.text('Age Distribution', 14, yPos);
+            doc.text(sanitizeText('Gender Distribution'), 14, yPos);
             yPos += 5;
             
             
-            // Age Distribution table
-            const ageData = dashboardData.ageDistribution.map(age => [
-                sanitizeText(age.age),
-                age.count.toLocaleString(),
-                `${age.percentage}%`
+            // Gender Distribution table
+            const genderData = dashboardData.genderDistribution.map(gender => [
+                sanitizeText(gender.gender),
+                gender.count.toLocaleString(),
+                `${gender.percentage}%`
             ]);
             
-            const ageWidths = calculateOptimalTableWidth([2.2, 1.5, 1.3]);
+            const genderWidths = calculateOptimalTableWidth([2.2, 1.5, 1.3]);
             autoTable(doc, {
                 startY: yPos,
-                head: [['Age Range', 'Count', 'Percentage']],
-                body: ageData,
+                head: [['Gender', 'Count', 'Percentage']],
+                body: genderData,
                 theme: 'striped',
                 headStyles: { fillColor: [168, 85, 247], textColor: 255, fontStyle: 'bold', fontSize: 10, cellPadding: 4 },
                 bodyStyles: { fontSize: 9, cellPadding: 3, valign: 'top' },
                 alternateRowStyles: { fillColor: [245, 248, 250] },
-                margin: ageWidths.margin,
+                margin: genderWidths.margin,
                 columnStyles: {
-                    0: { cellWidth: ageWidths.columnWidths[0], fontStyle: 'semibold', halign: 'left' },
-                    1: { cellWidth: ageWidths.columnWidths[1], halign: 'right' },
-                    2: { cellWidth: ageWidths.columnWidths[2], halign: 'right', fontStyle: 'bold' }
+                    0: { cellWidth: genderWidths.columnWidths[0], fontStyle: 'semibold', halign: 'left' },
+                    1: { cellWidth: genderWidths.columnWidths[1], halign: 'right' },
+                    2: { cellWidth: genderWidths.columnWidths[2], halign: 'right', fontStyle: 'bold' }
                 },
                 columnWidth: 'wrap'
             });
@@ -2100,85 +2123,36 @@ const AdminDashboard = () => {
             const exportDate = new Date().toLocaleDateString();
 
             // --- SECTION 1: REPORT HEADER ---
-            rows.push(["LITPATH AI - CONTENT QUALITY REPORT"]);
+            rows.push(["LITPATH AI - DORMANT MATERIALS REPORT"]);
             rows.push(["Export Date", exportDate]);
             rows.push(["Filter Period", filterDescription]);
-            rows.push(["Total Ratings (filtered)", filteredRatings.length]);
-
-            // Feature 13.0: Count dormant materials using 30-day rule
-            const dormantMaterialsCount = allLeastAccessed.filter(m => m.is_dormant).length;
-            const recentlyUploadedCount = allLeastAccessed.filter(m => m.is_recently_uploaded && !m.is_dormant).length;
-            rows.push(["Dormant Materials in Period (30+ days inactive)", dormantMaterialsCount]);
-            rows.push(["Recently Uploaded Materials in Period", recentlyUploadedCount]);
+            
+            // Filter to only dormant materials
+            const dormantMaterials = allLeastAccessed ? allLeastAccessed.filter(m => m.is_dormant) : [];
+            rows.push(["Total Dormant Materials (filtered)", dormantMaterials.length]);
             rows.push([]); // empty line
 
-            // --- SECTION 2: RATINGS LOG ---
-            rows.push(["RATINGS LOG"]);
-            rows.push(["Date", "Material Title", "Rating", "Score", "Comment"]);
+            // --- SECTION 2: DORMANT MATERIALS ONLY ---
+            rows.push(["DORMANT MATERIALS"]);
+            
+            if (dormantMaterials && dormantMaterials.length > 0) {
+                rows.push(["Material Title", "Year", "Uploaded", "Last Accessed", "Total Views"]);
 
-            filteredRatings.forEach(r => {
-                const date = new Date(r.created_at);
-                const dateStr = !isNaN(date) ? date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '-';
-                const title = r.material_title || r.document_file || 'Unknown';
-                const rating = r.relevant === true ? 'Helpful' : 'Not Relevant';
-                const score = r.relevant === true ? 1 : 0;
-                const comment = r.message_comment && r.message_comment.trim() !== '' ? r.message_comment : '-';
-
-                rows.push([
-                    escape(dateStr),
-                    escape(title),
-                    escape(rating),
-                    score,
-                    escape(comment)
-                ]);
-            });
-
-            rows.push([]);
-            rows.push([]);
-
-            // --- SECTION 3: LEAST VIEWED MATERIALS (Feature 13.0) - FILTERED BY SAME DATE RANGE ---
-            rows.push(["--- PART 2: LEAST VIEWED MATERIALS (Feature 13.0) - FILTERED BY SAME PERIOD ---"]);
-
-            if (allLeastAccessed && allLeastAccessed.length > 0) {
-                rows.push(["Material Title", "Year", "Uploaded", "Last Accessed", "Total Views", "Status", "Dormancy"]);
-
-                allLeastAccessed.forEach(m => {
+                dormantMaterials.forEach(m => {
                     const uploaded = m.created_at ? new Date(m.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-';
                     const lastAccess = m.last_accessed ? new Date(m.last_accessed).toLocaleDateString() : 'Never';
                     const views = m.view_count || 0;
-                    
-                    // Dormancy classification (Feature 13.0)
-                    let dormancyStatus = "Active";
-                    if (m.is_recently_uploaded && !m.is_dormant) {
-                        dormancyStatus = "Recently Uploaded";
-                    } else if (m.is_dormant) {
-                        dormancyStatus = "Dormant";
-                    }
-                    
-                    // Engagement classification
-                    let engagementStatus = "Active"; // Default for high views
-                    if (views === 0) {
-                        engagementStatus = "0 Views";
-                    } else if (views < 20) {
-                        engagementStatus = "Low Engagement";
-                    } else if (views < 100) {
-                        engagementStatus = "Moderate Engagement";
-                    } else {
-                        engagementStatus = "High Engagement";
-                    }
 
                     rows.push([
                         escape(m.title || m.file || 'Unknown'),
                         escape(m.year || '-'),
                         escape(uploaded),
                         escape(lastAccess),
-                        views,
-                        escape(engagementStatus),
-                        escape(dormancyStatus)
+                        views
                     ]);
                 });
             } else {
-                rows.push(["Note: No least viewed materials found in the selected period."]);
+                rows.push(["Note: No dormant materials found in the selected period."]);
             }
 
             // Convert rows to CSV string
@@ -2189,13 +2163,13 @@ const AdminDashboard = () => {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = `LitPathAI_MaterialReport_${getLocalDateString()}.csv`;
+            link.download = `LitPathAI_DormantMaterials_${getLocalDateString()}.csv`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
 
-            showToast('Report exported successfully!', 'success');
+            showToast('Dormant materials exported successfully!', 'success');
 
         } catch (error) {
             console.error("Export generation failed:", error);
@@ -2226,13 +2200,41 @@ const AdminDashboard = () => {
             const sanitizeText = (text) => {
                 if (!text) return '';
                 return String(text)
-                    .replace(/\u03B4/g, 'δ') // Greek delta
-                    .replace(/\u03B1/g, 'α') // Greek alpha
-                    .replace(/\u03B2/g, 'β') // Greek beta
-                    .replace(/\u03C0/g, 'π') // Greek pi
-                    .replace(/\u2212/g, '−') // Proper minus sign
+                    // Handle problematic Unicode characters that don't render well in courier font
+                    .replace(/º/g, 'o') // Masculine ordinal indicator to 'o'
+                    .replace(/ª/g, 'a') // Feminine ordinal indicator to 'a'
+                    .replace(/°/g, 'o') // Degree symbol to 'o'
+                    .replace(/²/g, '^2') // Superscript 2 to ^2
+                    .replace(/³/g, '^3') // Superscript 3 to ^3
+                    .replace(/¹/g, '^1') // Superscript 1 to ^1
+                    .replace(/×/g, 'x') // Multiplication sign to 'x'
+                    .replace(/÷/g, '/') // Division sign to /
+                    .replace(/´/g, "'") // Acute accent to apostrophe
+                    .replace(/`/g, "'") // Grave accent to apostrophe
+                    .replace(/¨/g, '') // Diaeresis to empty
+                    .replace(/¯/g, '-') // Macron to dash
+                    .replace(/µ/g, 'u') // Micro sign to 'u'
+                    .replace(/·/g, '.') // Middle dot to period
+                    .replace(/•/g, '-') // Bullet to dash
+                    .replace(/¢/g, 'c') // Cent sign
+                    .replace(/£/g, '') // Pound sign
+                    .replace(/¤/g, '') // Currency sign
+                    .replace(/¥/g, '') // Yen sign
+                    .replace(/§/g, '') // Section sign
+                    .replace(/¶/g, '') // Pilcrow
+                    // Handle dashes and quotes
+                    .replace(/\u2212/g, '-') // Proper minus sign
+                    .replace(/[\u2013\u2014]/g, '-') // En/Em dash to hyphen
+                    .replace(/[\u2018\u2019]/g, "'") // Smart quotes to apostrophe
+                    .replace(/[\u201C\u201D]/g, '"') // Smart double quotes to regular quotes
+                    // Remove any remaining non-ASCII characters that aren't handled
+                    .replace(/[^\x20-\x7E]/g, ' ')
+                    .replace(/\s+/g, ' ') // Normalize multiple spaces
                     .trim();
             };
+
+            // Ensure PDF uses proper font configuration
+            doc.setFont('courier', 'normal');
 
             // Helper function to calculate optimal table width and column distributions
             const calculateOptimalTableWidth = (proportionArray) => {
@@ -2297,12 +2299,12 @@ const AdminDashboard = () => {
 
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(22);
-            doc.setFont('helvetica', 'bold');
-            doc.text('Content Quality & Material Ratings Report', pageWidth / 2, 12, { align: 'center' });
+            doc.setFont('courier', 'bold');
+            doc.text(sanitizeText('Content Quality & Material Ratings Report'), pageWidth / 2, 12, { align: 'center' });
 
             doc.setFontSize(11);
-            doc.setFont('helvetica', 'normal');
-            doc.text(`${filterText} | Exported: ${exportDate}`, pageWidth / 2, 20, { align: 'center' });
+            doc.setFont('courier', 'normal');
+            doc.text(sanitizeText(`${filterText} | Exported: ${exportDate}`), pageWidth / 2, 20, { align: 'center' });
 
             yPos = 32;
 
@@ -2310,9 +2312,9 @@ const AdminDashboard = () => {
             // SECTION 1: SUMMARY STATISTICS — Clean labeled table
             // ============================================
             doc.setFontSize(14);
-            doc.setFont('helvetica', 'bold');
+            doc.setFont('courier', 'bold');
             doc.setTextColor(30, 116, 188);
-            doc.text('Summary Statistics', 14, yPos);
+            doc.text(sanitizeText('Summary Statistics'), 14, yPos);
             yPos += 5;
 
             const helpfulCount = filteredRatings.filter(r => r.relevant === true).length;
@@ -2354,9 +2356,9 @@ const AdminDashboard = () => {
             }
 
             doc.setFontSize(14);
-            doc.setFont('helvetica', 'bold');
+            doc.setFont('courier', 'bold');
             doc.setTextColor(30, 116, 188);
-            doc.text('Rating Distribution', 14, yPos);
+            doc.text(sanitizeText('Rating Distribution'), 14, yPos);
             yPos += 5;
 
             // Rating Distribution breakdown table
@@ -2394,9 +2396,9 @@ const AdminDashboard = () => {
             }
 
             doc.setFontSize(14);
-            doc.setFont('helvetica', 'bold');
+            doc.setFont('courier', 'bold');
             doc.setTextColor(30, 116, 188);
-            doc.text('Rating Trend Over Time', 14, yPos);
+            doc.text(sanitizeText('Rating Trend Over Time'), 14, yPos);
             yPos += 5;
 
             // Capture Rating Trend chart
@@ -2432,9 +2434,9 @@ const AdminDashboard = () => {
             }
 
             doc.setFontSize(14);
-            doc.setFont('helvetica', 'bold');
+            doc.setFont('courier', 'bold');
             doc.setTextColor(30, 116, 188);
-            doc.text('Top Rated Materials', 14, yPos);
+            doc.text(sanitizeText('Top Rated Materials'), 14, yPos);
             yPos += 5;
 
             const topMaterials = getTopMaterials(filteredRatings).slice(0, 10);
@@ -2473,9 +2475,9 @@ const AdminDashboard = () => {
             }
 
             doc.setFontSize(14);
-            doc.setFont('helvetica', 'bold');
+            doc.setFont('courier', 'bold');
             doc.setTextColor(30, 116, 188);
-            doc.text('Detailed Ratings Log', 14, yPos);
+            doc.text(sanitizeText('Detailed Ratings Log'), 14, yPos);
             yPos += 5;
 
             const ratingsLogData = filteredRatings.slice(0, 75).map((r) => [
@@ -2516,9 +2518,9 @@ const AdminDashboard = () => {
                 }
 
                 doc.setFontSize(14);
-                doc.setFont('helvetica', 'bold');
+                doc.setFont('courier', 'bold');
                 doc.setTextColor(239, 68, 68);
-                doc.text('Least Viewed Materials', 14, yPos);
+                doc.text(sanitizeText('Least Viewed Materials'), 14, yPos);
                 yPos += 5;
 
                 const leastAccessedData = leastAccessedMaterials.slice(0, 15).map((m) => [
@@ -2554,6 +2556,446 @@ const AdminDashboard = () => {
         } catch (error) {
             console.error("Ratings PDF export failed:", error);
             showToast('Failed to generate PDF export. Please try again.', 'error');
+        }
+    };
+
+    // ---------- Dormant Materials Modal Functions ----------
+    const handleOpenDormantMaterialsModal = async () => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/dashboard/least-browsed/?limit=1000`, {
+                headers: apiHeaders(true)
+            });
+            if (res.ok) {
+                const data = await res.json();
+                const dormantMaterials = data.filter(m => m.is_dormant);
+                setDormantMaterialsList(dormantMaterials);
+                setShowDormantMaterialsModal(true);
+            }
+        } catch (error) {
+            console.error("Failed to fetch dormant materials", error);
+            showToast('Failed to load dormant materials', 'error');
+        }
+    };
+
+    const formatDormantDate = (value, options = { year: 'numeric', month: 'short', day: 'numeric' }) => {
+        if (!value) return 'Never';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return 'Never';
+        return date.toLocaleDateString('en-US', options);
+    };
+
+    const getDormantInactivityDays = (material) => {
+        const anchorDate = material.last_accessed || material.created_at;
+        if (!anchorDate) return 0;
+        const date = new Date(anchorDate);
+        if (Number.isNaN(date.getTime())) return 0;
+        return Math.max(0, Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24)));
+    };
+
+    const getDormantReason = (material) => {
+        if (!material.last_accessed) return 'Never accessed';
+        return 'Inactive for 30+ days';
+    };
+
+    const getDormantAction = (material) => {
+        if (!material.last_accessed) return 'Prioritize discovery campaign';
+        if ((material.view_count || 0) === 0) return 'Review metadata and promote';
+        return 'Refresh title visibility or recommendations';
+    };
+
+    const getLocalDateString = () => {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const getDormantKpis = () => {
+        const total = dormantMaterialsList.length;
+        const neverAccessed = dormantMaterialsList.filter(material => !material.last_accessed).length;
+        const previouslyAccessed = total - neverAccessed;
+        const zeroViews = dormantMaterialsList.filter(material => (material.view_count || 0) === 0).length;
+        const totalViews = dormantMaterialsList.reduce((sum, material) => sum + (material.view_count || 0), 0);
+        const inactivityDays = dormantMaterialsList.map(getDormantInactivityDays);
+        const longestInactiveDays = inactivityDays.length ? Math.max(...inactivityDays) : 0;
+        const averageInactiveDays = inactivityDays.length
+            ? Math.round(inactivityDays.reduce((sum, days) => sum + days, 0) / inactivityDays.length)
+            : 0;
+
+        return {
+            total,
+            neverAccessed,
+            previouslyAccessed,
+            zeroViews,
+            totalViews,
+            averageViews: total ? (totalViews / total).toFixed(1) : '0.0',
+            averageInactiveDays,
+            longestInactiveDays,
+            neverAccessedPercent: total ? Math.round((neverAccessed / total) * 100) : 0,
+            zeroViewsPercent: total ? Math.round((zeroViews / total) * 100) : 0
+        };
+    };
+
+    const getDormantExportRows = () => dormantMaterialsList.map(material => ({
+        title: material.title || 'Untitled',
+        year: material.year || '-',
+        file: material.file || '-',
+        uploaded: material.created_at ? formatDormantDate(material.created_at) : '-',
+        lastAccessed: material.last_accessed ? formatDormantDate(material.last_accessed) : 'Never',
+        daysInactive: getDormantInactivityDays(material),
+        views: material.view_count || 0,
+        reason: getDormantReason(material),
+        action: getDormantAction(material)
+    }));
+
+    const handleDormantMaterialsExportExcel = () => {
+        try {
+            if (dormantMaterialsList.length === 0) {
+                showToast('No dormant materials to export', 'error');
+                return;
+            }
+
+            const escapeHtml = (value) => {
+                if (value === null || value === undefined) return '';
+                return String(value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            };
+
+            const exportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            const kpis = getDormantKpis();
+            const rows = getDormantExportRows();
+            const summaryRows = [
+                ['Total Dormant Materials', kpis.total],
+                ['Never Accessed', `${kpis.neverAccessed} (${kpis.neverAccessedPercent}%)`],
+                ['Previously Accessed', kpis.previouslyAccessed],
+                ['Zero View Materials', `${kpis.zeroViews} (${kpis.zeroViewsPercent}%)`],
+                ['Average Views', kpis.averageViews],
+                ['Average Inactive Days', kpis.averageInactiveDays],
+                ['Longest Inactive Days', kpis.longestInactiveDays]
+            ];
+
+            const workbookHtml = `
+                <html>
+                    <head>
+                        <meta charset="UTF-8" />
+                        <style>
+                            body { font-family: Arial, sans-serif; color: #111827; }
+                            h1 { color: #1E74BC; margin-bottom: 4px; }
+                            .meta { color: #4b5563; margin-bottom: 18px; }
+                            table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+                            th { background: #1E74BC; color: #ffffff; font-weight: 700; }
+                            th, td { border: 1px solid #d1d5db; padding: 8px; vertical-align: top; }
+                            .summary th { background: #155a8f; }
+                            .risk { background: #fef2f2; color: #991b1b; font-weight: 700; }
+                        </style>
+                    </head>
+                    <body>
+                        <h1>LitPath AI - Dormant Materials KPI Report</h1>
+                        <div class="meta">Exported: ${escapeHtml(exportDate)} | Definition: materials never accessed or inactive for 30+ days after upload.</div>
+                        <table class="summary">
+                            <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+                            <tbody>
+                                ${summaryRows.map(row => `<tr><td>${escapeHtml(row[0])}</td><td>${escapeHtml(row[1])}</td></tr>`).join('')}
+                            </tbody>
+                        </table>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Title</th>
+                                    <th>Year</th>
+                                    <th>File</th>
+                                    <th>Uploaded</th>
+                                    <th>Last Accessed</th>
+                                    <th>Days Inactive</th>
+                                    <th>Views</th>
+                                    <th>Dormancy Reason</th>
+                                    <th>Recommended Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rows.map(row => `
+                                    <tr>
+                                        <td>${escapeHtml(row.title)}</td>
+                                        <td>${escapeHtml(row.year)}</td>
+                                        <td>${escapeHtml(row.file)}</td>
+                                        <td>${escapeHtml(row.uploaded)}</td>
+                                        <td>${escapeHtml(row.lastAccessed)}</td>
+                                        <td class="${row.daysInactive >= 90 ? 'risk' : ''}">${escapeHtml(row.daysInactive)}</td>
+                                        <td>${escapeHtml(row.views)}</td>
+                                        <td>${escapeHtml(row.reason)}</td>
+                                        <td>${escapeHtml(row.action)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </body>
+                </html>
+            `;
+
+            const blob = new Blob(['\uFEFF' + workbookHtml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `LitPathAI_DormantMaterials_KPI_${getLocalDateString()}.xls`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            showToast('Dormant materials exported to Excel successfully!', 'success');
+        } catch (error) {
+            console.error("Dormant materials Excel export failed:", error);
+            showToast('Failed to export dormant materials. Please try again.', 'error');
+        }
+    };
+
+    // eslint-disable-next-line no-unused-vars
+    const handleDormantMaterialsExportCSV = () => {
+        try {
+            if (dormantMaterialsList.length === 0) {
+                showToast('No dormant materials to export', 'error');
+                return;
+            }
+
+            const rows = [];
+            const exportDate = new Date().toLocaleDateString();
+
+            const escape = (text) => {
+                if (text === null || text === undefined) return '';
+                const str = String(text);
+                return `"${str.replace(/"/g, '""')}"`;
+            };
+
+            const getLocalDateString = () => {
+                const d = new Date();
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+
+            // Header section
+            rows.push(["LITPATH AI - DORMANT MATERIALS REPORT"]);
+            rows.push(["Export Date", exportDate]);
+            rows.push(["Total Dormant Materials", dormantMaterialsList.length]);
+            rows.push([]);
+
+            // Column headers
+            rows.push(["Title", "Uploaded Date", "Last Accessed", "Views", "Status"]);
+
+            // Data rows
+            dormantMaterialsList.forEach(material => {
+                const uploadedDate = material.created_at 
+                    ? new Date(material.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+                    : '—';
+                const lastAccessed = material.last_accessed 
+                    ? new Date(material.last_accessed).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+                    : 'Never';
+
+                rows.push([
+                    escape(material.title || ''),
+                    escape(uploadedDate),
+                    escape(lastAccessed),
+                    escape(material.view_count || 0),
+                    'Dormant'
+                ]);
+            });
+
+            const csvContent = rows.map(row => row.join(',')).join('\r\n');
+            const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `LitPathAI_DormantMaterials_${getLocalDateString()}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            showToast('Dormant materials exported to CSV successfully!', 'success');
+        } catch (error) {
+            console.error("Dormant materials CSV export failed:", error);
+            showToast('Failed to export dormant materials. Please try again.', 'error');
+        }
+    };
+
+    const handleDormantMaterialsExportPDF = async () => {
+        try {
+            if (dormantMaterialsList.length === 0) {
+                showToast('No dormant materials to export', 'error');
+                return;
+            }
+
+            const { jsPDF } = await import('jspdf');
+            const { default: autoTable } = await import('jspdf-autotable');
+            
+            const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.width;
+            const pageHeight = doc.internal.pageSize.height;
+            let yPos = 20;
+            
+            // Helper function to sanitize text and handle special characters
+            const sanitizeText = (text) => {
+                if (!text) return '';
+                return String(text)
+                    // Handle problematic Unicode characters that don't render well in courier font
+                    .replace(/º/g, 'o') // Masculine ordinal indicator to 'o'
+                    .replace(/ª/g, 'a') // Feminine ordinal indicator to 'a'
+                    .replace(/°/g, 'o') // Degree symbol to 'o'
+                    .replace(/²/g, '^2') // Superscript 2 to ^2
+                    .replace(/³/g, '^3') // Superscript 3 to ^3
+                    .replace(/¹/g, '^1') // Superscript 1 to ^1
+                    .replace(/×/g, 'x') // Multiplication sign to 'x'
+                    .replace(/÷/g, '/') // Division sign to /
+                    .replace(/´/g, "'") // Acute accent to apostrophe
+                    .replace(/`/g, "'") // Grave accent to apostrophe
+                    .replace(/¨/g, '') // Diaeresis to empty
+                    .replace(/¯/g, '-') // Macron to dash
+                    .replace(/µ/g, 'u') // Micro sign to 'u'
+                    .replace(/·/g, '.') // Middle dot to period
+                    .replace(/•/g, '-') // Bullet to dash
+                    .replace(/¢/g, 'c') // Cent sign
+                    .replace(/£/g, '') // Pound sign
+                    .replace(/¤/g, '') // Currency sign
+                    .replace(/¥/g, '') // Yen sign
+                    .replace(/§/g, '') // Section sign
+                    .replace(/¶/g, '') // Pilcrow
+                    .replace(/¹/g, '1') // Superscript 1
+                    // Handle dashes and quotes
+                    .replace(/\u2212/g, '-') // Proper minus sign
+                    .replace(/[\u2013\u2014]/g, '-') // En/Em dash to hyphen
+                    .replace(/[\u2018\u2019]/g, "'") // Smart quotes to apostrophe
+                    .replace(/[\u201C\u201D]/g, '"') // Smart double quotes to regular quotes
+                    // Remove any remaining non-ASCII characters that aren't handled
+                    .replace(/[^\x20-\x7E]/g, ' ')
+                    .replace(/\s+/g, ' ') // Normalize multiple spaces
+                    .trim();
+            };
+            
+            // Set default font for better Unicode support
+            doc.setFont('courier', 'normal');
+
+            // Header
+            doc.setFillColor(30, 116, 188);
+            doc.rect(0, 0, pageWidth, 25, 'F');
+            
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(22);
+            doc.setFont('courier', 'bold');
+            doc.text(sanitizeText('Dormant Materials Report'), pageWidth / 2, 12, { align: 'center' });
+
+            doc.setFontSize(11);
+            doc.setFont('courier', 'normal');
+            const exportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            doc.text(sanitizeText(`Exported: ${exportDate} | Total: ${dormantMaterialsList.length}`), pageWidth / 2, 20, { align: 'center' });
+
+            yPos = 32;
+            const kpis = getDormantKpis();
+            const exportRows = getDormantExportRows();
+
+            // Summary
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(14);
+            doc.setFont('courier', 'bold');
+            doc.setTextColor(30, 116, 188);
+            doc.text(sanitizeText('KPI Summary'), 14, yPos);
+            yPos += 5;
+
+            doc.setFontSize(10);
+            doc.setFont('courier', 'normal');
+            doc.setTextColor(0, 0, 0);
+            doc.text(sanitizeText(`Total Dormant Materials: ${dormantMaterialsList.length}`), 14, yPos);
+            yPos += 5;
+            doc.text(sanitizeText(`Definition: Materials not accessed for 30+ days or never accessed (uploaded 30+ days ago)`), 14, yPos);
+            yPos += 8;
+
+            autoTable(doc, {
+                head: [['Metric', 'Value']],
+                body: [
+                    ['Never Accessed', `${kpis.neverAccessed} (${kpis.neverAccessedPercent}%)`],
+                    ['Previously Accessed', kpis.previouslyAccessed.toLocaleString()],
+                    ['Zero View Materials', `${kpis.zeroViews} (${kpis.zeroViewsPercent}%)`],
+                    ['Average Views', kpis.averageViews],
+                    ['Average Inactive Days', `${kpis.averageInactiveDays} days`],
+                    ['Longest Inactive Days', `${kpis.longestInactiveDays} days`]
+                ],
+                startY: yPos,
+                margin: 14,
+                theme: 'striped',
+                headStyles: { fillColor: [30, 116, 188], textColor: 255, fontStyle: 'bold' },
+                bodyStyles: { fontSize: 9, cellPadding: 3 },
+                columnStyles: {
+                    0: { cellWidth: 100, fontStyle: 'bold' },
+                    1: { cellWidth: 80, halign: 'right' }
+                }
+            });
+
+            yPos = doc.lastAutoTable.finalY + 10;
+            doc.setFontSize(14);
+            doc.setFont('courier', 'bold');
+            doc.setTextColor(30, 116, 188);
+            doc.text(sanitizeText('Dormant Thesis Details'), 14, yPos);
+            yPos += 5;
+
+            // Table data - sanitize all titles to handle special characters
+            const detailedDormantRows = exportRows.map(row => [
+                sanitizeText(row.title),
+                sanitizeText(row.year),
+                sanitizeText(row.lastAccessed),
+                row.daysInactive.toString(),
+                row.views.toString(),
+                sanitizeText(row.reason),
+                sanitizeText(row.action)
+            ]);
+
+            const tableData = dormantMaterialsList.map(material => [
+                sanitizeText(material.title || '—'),
+                material.created_at ? new Date(material.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—',
+                material.last_accessed ? new Date(material.last_accessed).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Never',
+                (material.view_count || 0).toString()
+            ]);
+
+            void tableData;
+
+            autoTable(doc, {
+                head: [['Title', 'Year', 'Last Accessed', 'Inactive', 'Views', 'Reason', 'Action']],
+                body: detailedDormantRows,
+                startY: yPos,
+                margin: 14,
+                theme: 'striped',
+                headStyles: { fillColor: [21, 90, 143], textColor: 255, fontStyle: 'bold', fontSize: 8 },
+                bodyStyles: { fontSize: 7, cellPadding: 2, valign: 'top' },
+                columnStyles: {
+                    0: { cellWidth: 58, halign: 'left' },
+                    1: { cellWidth: 14, halign: 'center' },
+                    2: { cellWidth: 22, halign: 'center' },
+                    3: { cellWidth: 18, halign: 'right' },
+                    4: { cellWidth: 14, halign: 'right' },
+                    5: { cellWidth: 28, halign: 'left' },
+                    6: { cellWidth: 28, halign: 'left' }
+                },
+                didDrawPage: (data) => {
+                    const pageCount = doc.getNumberOfPages();
+                    const pageSize = doc.internal.pageSize;
+                    const pageHeight = pageSize.height;
+
+                    if (pageCount > 1) {
+                        doc.setFontSize(10);
+                        doc.text(`Page ${pageCount}`, 14, pageHeight - 10);
+                    }
+                }
+            });
+
+            doc.save(`LitPathAI_DormantMaterials_KPI_${new Date().toISOString().slice(0, 10)}.pdf`);
+            showToast('Dormant materials exported to PDF successfully!', 'success');
+        } catch (error) {
+            console.error("Dormant materials PDF export failed:", error);
+            showToast('Failed to export dormant materials to PDF. Please try again.', 'error');
         }
     };
 
@@ -2624,7 +3066,7 @@ const AdminDashboard = () => {
                                             </label>
                                             <div className="grid grid-cols-2 gap-3 bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm">
                                                 <span className="text-gray-600">Client Type:</span>
-                                                <span className="font-medium">{selectedFeedback.client_type || '—'}</span>
+                                                <span className="font-medium">{getDisplayClientType(selectedFeedback)}</span>
                                                 <span className="text-gray-600">Date of Interaction:</span>
                                                 <span className="font-medium">{selectedFeedback.date ? new Date(selectedFeedback.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '—'}</span>
                                                 <span className="text-gray-600">Sex:</span>
@@ -3043,11 +3485,11 @@ const AdminDashboard = () => {
                         <div>
                             <button 
                                 onClick={() => setIsDashboardExpanded(!isDashboardExpanded)}
-                                className={`w-full flex items-center justify-between p-3 rounded-lg transition-colors ${activeTab === 'overview' || activeTab === 'ratings' ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-gray-600 hover:bg-gray-50'}`}
+                                className={`w-full flex items-center p-3 rounded-lg transition-colors ${isSidebarOpen ? 'justify-between' : 'justify-center'} ${activeTab === 'overview' || activeTab === 'ratings' ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-gray-600 hover:bg-gray-50'}`}
                             >
-                                <div className="flex items-center">
+                                <div className={`flex items-center ${isSidebarOpen ? '' : 'justify-center'}`}>
                                     <LayoutDashboard size={20} className="flex-shrink-0" />
-                                    <span className={`ml-3 text-sm whitespace-nowrap transition-all duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'}`}>Dashboard</span>
+                                    <span className={`text-sm whitespace-nowrap transition-all duration-300 ${isSidebarOpen ? 'ml-3 opacity-100' : 'ml-0 opacity-0 w-0 overflow-hidden'}`}>Dashboard</span>
                                 </div>
                                 {isSidebarOpen && (
                                     <ChevronDown 
@@ -3059,23 +3501,23 @@ const AdminDashboard = () => {
                             
                             {/* Dashboard Child Items */}
                             {isDashboardExpanded && (
-                                <div className="ml-4 mt-2 space-y-1 border-l-2 border-gray-200 pl-2">
+                                <div className={`mt-2 space-y-1 ${isSidebarOpen ? 'ml-4 border-l-2 border-gray-200 pl-2' : 'ml-0 border-l-0 pl-0'}`}>
                                     {/* Usage Analytics */}
                                     <button 
                                         onClick={() => handleTabChange('overview')}
-                                        className={`w-full flex items-center p-3 rounded-lg text-sm transition-colors ${activeTab === 'overview' ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-gray-600 hover:bg-gray-50'}`}
+                                        className={`w-full flex items-center p-3 rounded-lg text-sm transition-colors ${isSidebarOpen ? 'justify-start' : 'justify-center'} ${activeTab === 'overview' ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-gray-600 hover:bg-gray-50'}`}
                                     >
                                         <TrendingUp size={18} className="flex-shrink-0" />
-                                        <span className={`ml-3 whitespace-nowrap transition-all duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'}`}>Usage Analytics</span>
+                                        <span className={`whitespace-nowrap transition-all duration-300 ${isSidebarOpen ? 'ml-3 opacity-100' : 'ml-0 opacity-0 w-0 overflow-hidden'}`}>Usage Analytics</span>
                                     </button>
                                     
                                     {/* Material Ratings */}
                                     <button 
                                         onClick={() => handleTabChange('ratings')}
-                                        className={`w-full flex items-center p-3 rounded-lg text-sm transition-colors ${activeTab === 'ratings' ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-gray-600 hover:bg-gray-50'}`}
+                                        className={`w-full flex items-center p-3 rounded-lg text-sm transition-colors ${isSidebarOpen ? 'justify-start' : 'justify-center'} ${activeTab === 'ratings' ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-gray-600 hover:bg-gray-50'}`}
                                     >
                                         <Star size={18} className="flex-shrink-0" />
-                                        <span className={`ml-3 whitespace-nowrap transition-all duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'}`}>Material Ratings</span>
+                                        <span className={`whitespace-nowrap transition-all duration-300 ${isSidebarOpen ? 'ml-3 opacity-100' : 'ml-0 opacity-0 w-0 overflow-hidden'}`}>Material Ratings</span>
                                     </button>
                                 </div>
                             )}
@@ -3084,10 +3526,10 @@ const AdminDashboard = () => {
                         {/* Feedback Manager - Top Level */}
                         <button 
                             onClick={() => handleTabChange('feedback')} 
-                            className={`w-full flex items-center p-3 rounded-lg transition-colors ${activeTab === 'feedback' ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-gray-600 hover:bg-gray-50'}`}
+                            className={`w-full flex items-center p-3 rounded-lg transition-colors ${isSidebarOpen ? 'justify-start' : 'justify-center'} ${activeTab === 'feedback' ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-gray-600 hover:bg-gray-50'}`}
                         >
                             <MessageSquare size={20} className="flex-shrink-0" />
-                            <span className={`ml-3 text-sm whitespace-nowrap transition-all duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'}`}>Feedback Manager</span>
+                            <span className={`text-sm whitespace-nowrap transition-all duration-300 ${isSidebarOpen ? 'ml-3 opacity-100' : 'ml-0 opacity-0 w-0 overflow-hidden'}`}>Feedback Manager</span>
                         </button>
                     </nav>
                     <div className={`p-4 border-t border-gray-100 text-xs text-gray-400 text-center whitespace-nowrap overflow-hidden transition-all duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 h-0 p-0'}`}>
@@ -3548,14 +3990,14 @@ const AdminDashboard = () => {
                                     </div>
 
                                     {/* COL 2: MOST VIEWED THESES - LEADERBOARD STYLE (50%) */}
-                                    <div className="col-span-12 lg:col-span-6 bg-white rounded-lg shadow-sm border border-gray-100 p-4 flex flex-col overflow-hidden">
+                                    <div className="col-span-12 lg:col-span-6 bg-white rounded-lg shadow-sm border border-gray-100 p-4 flex flex-col overflow-visible">
                                         <div className="flex items-center gap-1 mb-4">
                                             <h3 className="font-bold text-gray-700 text-xs uppercase tracking-wide flex items-center gap-2">
                                                 <BookOpen size={16} className="text-purple-600" /> Most Viewed Theses
                                             </h3>
                                             <div className="relative group">
                                                 <Info size={14} className="text-gray-400 cursor-help hover:text-gray-600" />
-                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center z-20 pointer-events-none w-48">
+                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center z-20 pointer-events-none w-56">
                                                     <div className="bg-gray-800 text-white text-[10px] px-3 py-2 rounded shadow-lg text-center">
                                                         Ranked by number of views within the selected date range.
                                                     </div>
@@ -3604,7 +4046,7 @@ const AdminDashboard = () => {
                                         </div>
                                     </div>
 
-                                    {/* COL 3: USERS & AGE DISTRIBUTION (25%) */}
+                                    {/* COL 3: USERS & GENDER DISTRIBUTION (25%) */}
                                     <div className="col-span-12 lg:col-span-3 flex flex-col gap-2">
 
                                         {/* Users by Category */}
@@ -3654,40 +4096,39 @@ const AdminDashboard = () => {
                                             </div>
                                         </div>
 
-                                        {/* Age Distribution */}
-                                        <div ref={ageDistributionChartRef} className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 flex-1">
+                                        {/* Gender Distribution */}
+                                        <div ref={genderDistributionChartRef} className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 flex-1">
                                             <div className="flex items-center gap-1 mb-3">
                                                 <h3 className="font-bold text-gray-700 text-xs uppercase tracking-wide flex items-center gap-2">
-                                                    <Users size={16} className="text-purple-600" /> Age Distribution
+                                                    <Users size={16} className="text-purple-600" /> Gender Distribution
                                                 </h3>
                                                 <div className="relative group">
                                                     <Info size={14} className="text-gray-400 cursor-help hover:text-gray-600" />
-                                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center z-20 pointer-events-none w-48">
+                                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center z-20 pointer-events-none w-56">
                                                         <div className="bg-gray-800 text-white text-[10px] px-3 py-2 rounded shadow-lg text-center">
-                                                            Age breakdown of users who provided feedback.
+                                                            Gender breakdown of users who registered and submitted feedback.
                                                         </div>
                                                         <div className="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[4px] border-t-gray-800"></div>
                                                     </div>
                                                 </div>
                                             </div>
                                             {(() => {
-                                                // Filter to only ages with data, sort by count descending, take top 8
-                                                const agesWithData = dashboardData.ageDistribution
-                                                    .filter(a => a.count > 0)
-                                                    .sort((a, b) => b.count - a.count)
-                                                    .slice(0, 8);
-                                                const total = dashboardData.ageDistribution.reduce((sum, a) => sum + a.count, 0);
+                                                // Filter to only genders with data, sort by count descending
+                                                const gendersWithData = dashboardData.genderDistribution
+                                                    .filter(g => g.count > 0)
+                                                    .sort((a, b) => b.count - a.count);
+                                                const total = dashboardData.genderDistribution.reduce((sum, g) => sum + g.count, 0);
 
                                                 const colorPalette = [
-                                                    '#3b82f6', '#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6', '#a855f7', '#ec4899', '#6366f1', '#8b5cf6'
+                                                    '#3b82f6', '#ef4444', '#f97316'
                                                 ];
 
-                                                if (agesWithData.length === 0) {
+                                                if (gendersWithData.length === 0) {
                                                     return <p className="text-xs text-gray-400 italic">No records yet</p>;
                                                 }
 
                                                 let cumulativePercent = 0;
-                                                const gradientStops = agesWithData.map((item, i) => {
+                                                const gradientStops = gendersWithData.map((item, i) => {
                                                     const percentage = (item.count / total) * 100;
                                                     const start = cumulativePercent;
                                                     cumulativePercent += percentage;
@@ -3713,13 +4154,13 @@ const AdminDashboard = () => {
                                                         </div>
                                                         {/* Legend */}
                                                         <div className="w-full space-y-1 max-h-40 overflow-y-auto pr-1">
-                                                            {agesWithData.map((item, i) => {
+                                                            {gendersWithData.map((item, i) => {
                                                                 const color = colorPalette[i % colorPalette.length];
                                                                 return (
                                                                     <div key={i} className="flex items-center gap-2 text-[10px]">
                                                                         <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
-                                                                        <span className="flex-1 truncate" title={item.age}>
-                                                                            {item.age}
+                                                                        <span className="flex-1 truncate" title={item.gender}>
+                                                                            {item.gender}
                                                                         </span>
                                                                         <span className="font-semibold text-gray-700">
                                                                             {item.count} ({item.percentage}%)
@@ -4303,11 +4744,7 @@ const AdminDashboard = () => {
                                                 <div className="absolute top-full right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-xl z-30 min-w-[160px] p-1">
                                                     {[
                                                         { value: 'All', label: 'All Client Types' },
-                                                        { value: 'Student', label: 'Student' },
-                                                        { value: 'Faculty', label: 'Faculty' },
-                                                        { value: 'DOST', label: 'DOST' },
-                                                        { value: 'Librarian', label: 'Librarian' },
-                                                        { value: 'Guest', label: 'Guest' }
+                                                        ...clientTypeFilterOptions.map(option => ({ value: option, label: option }))
                                                     ].map(option => (
                                                         <button
                                                             key={option.value}
@@ -4418,7 +4855,7 @@ const AdminDashboard = () => {
                                                         </td>
                                                         <td className="px-6 py-4 whitespace-nowrap">
                                                             <span className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded text-xs border border-blue-100 font-medium">
-                                                                {fb.client_type || '—'}
+                                                                {getDisplayClientType(fb)}
                                                             </span>
                                                         </td>
                                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
@@ -4812,23 +5249,48 @@ const AdminDashboard = () => {
                                 </div>
 
                                 {/* Dormant Materials */}
-                                <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-                                    <div className="flex items-center gap-1">
+                                <div 
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenDormantMaterialsModal();
+                                    }}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyPress={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                            handleOpenDormantMaterialsModal();
+                                        }
+                                    }}
+                                    title="Open dormant materials KPI details"
+                                    className="group bg-white p-4 rounded-lg shadow-sm border border-blue-100 cursor-pointer hover:shadow-md hover:border-[#1E74BC] hover:bg-blue-50/40 focus:outline-none focus:ring-2 focus:ring-[#1E74BC] focus:ring-offset-2 transition-all"
+                                >
+                                    <div className="flex items-center justify-between gap-2">
                                         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                                            <LogOut size={18} className="text-purple-600" /> Dormant Materials
+                                            <LogOut size={18} className="text-blue-600" /> Dormant Materials
                                         </p>
-                                        <div className="relative group">
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[10px] font-bold text-[#1E74BC] border border-blue-100 group-hover:bg-white">
+                                            View KPI
+                                            <ChevronRight size={12} />
+                                        </span>
+                                    </div>
+                                    <div className="flex items-start justify-between gap-3 mt-2">
+                                        <div>
+                                            <p className="text-2xl font-bold text-gray-900">{formatNumber(dormantCount)}</p>
+                                            <p className="text-xs text-gray-400 mt-1">Dormant (30+ days)</p>
+                                        </div>
+                                        <div className="relative group pointer-events-none">
                                             <Info size={14} className="text-gray-400 cursor-help hover:text-gray-600" />
-                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center z-20 pointer-events-none w-64">
-                                                <div className="bg-gray-800 text-white text-[10px] px-3 py-2 rounded shadow-lg text-center">
-                                                    Materials not accessed for 30+ days or never accessed (and uploaded 30+ days ago).
+                                            <div className="absolute bottom-full right-0 mb-2 hidden group-hover:flex flex-col items-end z-50 pointer-events-none w-72 max-w-[min(18rem,calc(100vw-2rem))]">
+                                                <div className="bg-gray-800 text-white text-[10px] px-3 py-2 rounded shadow-lg text-center leading-snug whitespace-normal">
+                                                    Materials not accessed for 30+ days or never accessed (and uploaded 30+ days ago). Click to see details.
                                                 </div>
-                                                <div className="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[4px] border-t-gray-800"></div>
+                                                <div className="mr-2 w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[4px] border-t-gray-800"></div>
                                             </div>
                                         </div>
                                     </div>
-                                    <p className="text-2xl font-bold text-gray-900 mt-2">{formatNumber(dormantCount)}</p>
-                                    <p className="text-xs text-gray-400 mt-1">Dormant (30+ days)</p>
+                                    <div className="mt-3 h-1.5 rounded-full bg-blue-100 overflow-hidden">
+                                        <div className="h-full w-full bg-[#1E74BC] rounded-full opacity-80 group-hover:opacity-100"></div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -4902,7 +5364,7 @@ const AdminDashboard = () => {
                                     </div>
                                 </div>
 
-                                {/* 2. Least Viewed Materials (Feature 13.0) */}
+                                {/* 2. Least Viewed Materials */}
                                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex flex-col h-full">
                                     <div className="flex items-center gap-1.5 mb-2 border-b border-gray-100 pb-3">
                                         <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2">
@@ -5355,15 +5817,8 @@ const AdminDashboard = () => {
                             </div>
 
                             {/* Password hint */}
-                            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 mt-1">
-                                <p className="text-xs font-semibold text-gray-700 mb-1">Password requirements:</p>
-                                <ul className="list-disc list-inside text-xs space-y-1">
-                                    {passwordChecks.map((requirement) => (
-                                        <li key={requirement.label} className={requirement.isMet ? 'text-green-600' : 'text-red-500'}>
-                                            {requirement.label}
-                                        </li>
-                                    ))}
-                                </ul>
+                            <div className="mt-1">
+                                <PasswordRequirements checks={passwordChecks} />
                             </div>
 
                             <button
@@ -5390,6 +5845,219 @@ const AdminDashboard = () => {
                 </div>
                 )}
             </div>
+
+            {/* Dormant Materials Modal */}
+            {showDormantMaterialsModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                        {/* Modal Header with Export Buttons */}
+                        <div className="bg-gradient-to-r from-[#1E74BC] to-[#155a8f] px-6 py-4 flex items-center justify-between">
+                            <div>
+                                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                    <LogOut size={24} className="text-blue-200" />
+                                    Dormant Materials KPI
+                                </h2>
+                                <p className="text-blue-100 text-sm mt-1">
+                                    Detailed inactivity insights and export-ready thesis list
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={handleDormantMaterialsExportExcel}
+                                    className="bg-white text-[#1E74BC] px-4 py-2 rounded-lg font-semibold text-sm hover:bg-blue-50 transition-colors flex items-center gap-2"
+                                >
+                                    <Download size={16} />
+                                    Excel
+                                </button>
+                                <button
+                                    onClick={handleDormantMaterialsExportPDF}
+                                    className="bg-white text-[#1E74BC] px-4 py-2 rounded-lg font-semibold text-sm hover:bg-blue-50 transition-colors flex items-center gap-2"
+                                >
+                                    <Download size={16} />
+                                    PDF
+                                </button>
+                                <button
+                                    title="Close dormant materials modal"
+                                    onClick={() => setShowDormantMaterialsModal(false)}
+                                    className="bg-[#1E74BC] hover:bg-red-600 text-white px-3 py-2 rounded-lg transition-colors ml-2"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Modal Content */}
+                        <div className="flex-1 overflow-y-auto p-4">
+                            {dormantMaterialsList.length > 0 && (() => {
+                                const kpis = getDormantKpis();
+                                const rows = getDormantExportRows();
+                                const highRiskRows = rows.filter(row => row.daysInactive >= 90);
+                                const zeroViewRows = rows.filter(row => row.views === 0);
+
+                                return (
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                            <div className="border border-blue-100 bg-blue-50 rounded-lg p-3 min-h-[112px]">
+                                                <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Dormant Theses</p>
+                                                <p className="text-3xl font-bold text-gray-900 mt-2">{formatNumber(kpis.total)}</p>
+                                                <p className="text-xs text-blue-700 mt-1">Inactive or never accessed</p>
+                                            </div>
+                                            <div className="border border-amber-100 bg-amber-50 rounded-lg p-3 min-h-[112px]">
+                                                <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Avg. Inactive Days</p>
+                                                <p className="text-3xl font-bold text-gray-900 mt-2">{formatNumber(kpis.averageInactiveDays)}</p>
+                                                <p className="text-xs text-amber-700 mt-1">Longest: {formatNumber(kpis.longestInactiveDays)} days</p>
+                                            </div>
+                                            <div className="border border-red-100 bg-red-50 rounded-lg p-3 min-h-[112px]">
+                                                <p className="text-xs font-semibold text-red-700 uppercase tracking-wide">Zero-View Rate</p>
+                                                <p className="text-3xl font-bold text-gray-900 mt-2">{kpis.zeroViewsPercent}%</p>
+                                                <p className="text-xs text-red-700 mt-1">{formatNumber(kpis.zeroViews)} theses with no views</p>
+                                            </div>
+                                            <div className="border border-slate-200 bg-slate-50 rounded-lg p-3 min-h-[112px]">
+                                                <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide">Avg. Views</p>
+                                                <p className="text-3xl font-bold text-gray-900 mt-2">{kpis.averageViews}</p>
+                                                <p className="text-xs text-slate-600 mt-1">{formatNumber(kpis.totalViews)} total dormant views</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 items-stretch">
+                                            <div className="lg:col-span-2 border border-gray-200 rounded-lg overflow-hidden">
+                                                <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-3">
+                                                    <div>
+                                                        <h3 className="text-sm font-bold text-gray-800">Dormant Thesis Inventory</h3>
+                                                        <p className="text-xs text-gray-500">Includes inactivity reason, days inactive, views, and recommended action.</p>
+                                                    </div>
+                                                    <span className="text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded px-2 py-1">
+                                                        {rows.length} records
+                                                    </span>
+                                                </div>
+                                                <div className="overflow-auto max-h-[430px]">
+                                                    <table className="min-w-full divide-y divide-gray-200 text-sm">
+                                                        <thead className="bg-white">
+                                                            <tr>
+                                                                <th className="px-3 py-2.5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wide">Title</th>
+                                                                <th className="px-3 py-2.5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wide">Last Accessed</th>
+                                                                <th className="px-3 py-2.5 text-right text-[11px] font-bold text-gray-500 uppercase tracking-wide">Inactive</th>
+                                                                <th className="px-3 py-2.5 text-right text-[11px] font-bold text-gray-500 uppercase tracking-wide">Views</th>
+                                                                <th className="px-3 py-2.5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-wide">Action</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="bg-white divide-y divide-gray-100">
+                                                            {rows.map((row, index) => (
+                                                                <tr key={`${row.file}-${index}`} className="hover:bg-blue-50/60">
+                                                                    <td className="px-3 py-2.5 max-w-[320px]">
+                                                                        <p className="font-semibold text-gray-900 line-clamp-2" title={row.title}>{row.title}</p>
+                                                                        <p className="text-xs text-gray-500 mt-1">{row.year} | {row.reason}</p>
+                                                                    </td>
+                                                                    <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{row.lastAccessed}</td>
+                                                                    <td className="px-3 py-2.5 text-right">
+                                                                        <span className={`font-bold ${row.daysInactive >= 90 ? 'text-red-700' : 'text-amber-700'}`}>
+                                                                            {formatNumber(row.daysInactive)} days
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-3 py-2.5 text-right font-semibold text-gray-700">{formatNumber(row.views)}</td>
+                                                                    <td className="px-3 py-2.5 text-gray-600">{row.action}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+
+                                            <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <div className="border border-gray-200 rounded-lg p-4 bg-white h-full">
+                                                    <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                                        <AlertCircle size={16} className="text-red-600" />
+                                                        Attention Signals
+                                                    </h3>
+                                                    <div className="mt-4 space-y-3 text-sm">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-gray-600">90+ days inactive</span>
+                                                            <span className="font-bold text-red-700">{formatNumber(highRiskRows.length)}</span>
+                                                        </div>
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-gray-600">Zero views</span>
+                                                            <span className="font-bold text-gray-900">{formatNumber(zeroViewRows.length)}</span>
+                                                        </div>
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-gray-600">Previously accessed</span>
+                                                            <span className="font-bold text-blue-700">{formatNumber(kpis.previouslyAccessed)}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 h-full">
+                                                    <h3 className="text-sm font-bold text-gray-800">Export Package</h3>
+                                                    <div className="mt-4 space-y-3 text-sm">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-gray-600">PDF report</span>
+                                                            <span className="font-bold text-[#1E74BC]">KPI + list</span>
+                                                        </div>
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-gray-600">Excel workbook</span>
+                                                            <span className="font-bold text-[#1E74BC]">Shareable</span>
+                                                        </div>
+                                                        <p className="text-xs text-gray-500 pt-1">
+                                                            Includes inactivity days, view count, dormancy reason, and recommended action.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+                            {dormantMaterialsList.length > 0 ? (
+                                <div className="hidden">
+                                    {dormantMaterialsList.map((material, index) => (
+                                        <div key={index} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                                            <div className="flex items-start justify-between gap-4">
+                                                <div className="flex-1">
+                                                    <h3 className="font-semibold text-gray-900 text-sm line-clamp-2">
+                                                        {material.title || 'Untitled'}
+                                                    </h3>
+                                                    <div className="grid grid-cols-2 gap-3 mt-3 text-xs text-gray-600">
+                                                        <div>
+                                                            <span className="font-semibold text-gray-700">Uploaded:</span>
+                                                            <p className="text-gray-600 mt-0.5">
+                                                                {material.created_at 
+                                                                    ? new Date(material.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+                                                                    : '—'
+                                                                }
+                                                            </p>
+                                                        </div>
+                                                        <div>
+                                                            <span className="font-semibold text-gray-700">Last Accessed:</span>
+                                                            <p className="text-gray-600 mt-0.5">
+                                                                {material.last_accessed
+                                                                    ? new Date(material.last_accessed).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+                                                                    : 'Never'
+                                                                }
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="inline-block bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-semibold mb-2">
+                                                        Dormant
+                                                    </span>
+                                                    <div className="bg-gray-100 text-gray-700 px-3 py-1 rounded text-xs font-bold">
+                                                        {material.view_count || 0} views
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-12">
+                                    <BookOpen size={48} className="text-gray-300 mb-3" />
+                                    <p className="text-gray-500 font-semibold">No dormant materials found</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 };

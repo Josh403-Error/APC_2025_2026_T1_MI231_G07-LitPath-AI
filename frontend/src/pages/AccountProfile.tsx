@@ -5,6 +5,7 @@ import { RefreshCw, Save, User, KeyRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE_URL } from '../services/api';
 import { getPasswordRequirementChecks, validatePasswordStrength } from '../lib/passwordValidation';
+import PasswordRequirements from '../components/PasswordRequirements';
 
 const AccountProfile = () => {
     const navigate = useNavigate();
@@ -17,6 +18,7 @@ const AccountProfile = () => {
         school_level: '',
         school_name: '',
         client_type: '',
+        client_type_other: '',
         sex: '',
         age: '',
         region: ''
@@ -43,14 +45,19 @@ const AccountProfile = () => {
             email: user.email || '',
             school_level: user.school_level || '',
             school_name: user.school_name || '',
-            client_type: user.client_type || '',
+            client_type: ['Student', 'DOST Employee', 'Other Government Employee', 'Librarian/Library Staff', 'Teaching Personnel', 'Administrative Personnel', 'Researcher', 'Others'].includes(user.client_type)
+                ? user.client_type
+                : (user.client_type ? 'Others' : ''),
+            client_type_other: ['Student', 'DOST Employee', 'Other Government Employee', 'Librarian/Library Staff', 'Teaching Personnel', 'Administrative Personnel', 'Researcher', 'Others'].includes(user.client_type)
+                ? ''
+                : (user.client_type || ''),
             sex: user.sex || '',
             age: user.age || '',
             region: user.region || ''
         });
     }, [user, navigate]);
 
-    const clientTypeChoices = ['Student', 'DOST Employee', 'Other Government Employee', 'Librarian/Library Staff', 'Teaching Personnel', 'Administrative Personnel', 'Researcher'];
+    const clientTypeChoices = ['Student', 'DOST Employee', 'Other Government Employee', 'Librarian/Library Staff', 'Teaching Personnel', 'Administrative Personnel', 'Researcher', 'Others'];
     const sexChoices = ['Female', 'Male', 'Prefer not to say'];
     const ageChoices = [
         '10 and below', '11-15', '16-20', '21-25', '26-30', '31-35',
@@ -64,6 +71,7 @@ const AccountProfile = () => {
         'Junior High School', 'Senior High School', 'Undergraduate', 'Graduate', 'Postgraduate'
     ];
     const isStudentClient = formData.client_type === 'Student';
+    const isOtherClient = formData.client_type === 'Others';
 
     const handleProfileSave = async () => {
         setLoading(true);
@@ -198,6 +206,7 @@ const AccountProfile = () => {
                                     setFormData(prev => ({
                                         ...prev,
                                         client_type: nextClientType,
+                                        client_type_other: nextClientType === 'Others' ? prev.client_type_other : '',
                                         school_level: nextClientType === 'Student' ? prev.school_level : '',
                                         school_name: nextClientType === 'Student' ? prev.school_name : ''
                                     }));
@@ -207,6 +216,18 @@ const AccountProfile = () => {
                                 {clientTypeChoices.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                             </select>
                         </div>
+
+                        {isOtherClient && (
+                            <div>
+                                <label className="text-sm font-medium text-gray-700">Please specify</label>
+                                <input
+                                    className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg"
+                                    value={formData.client_type_other}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, client_type_other: e.target.value }))}
+                                    placeholder="Enter your client type"
+                                />
+                            </div>
+                        )}
 
                         {isStudentClient && (
                             <>
@@ -270,15 +291,8 @@ const AccountProfile = () => {
                 <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mt-6">
                     <h2 className="text-xl font-semibold text-gray-900 mb-4">Security</h2>
                     <p className="text-xs text-gray-500 mb-4">Leave blank if you do not want to change password.</p>
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 mb-4">
-                        <p className="text-xs font-semibold text-gray-700 mb-1">Password requirements:</p>
-                        <ul className="list-disc list-inside text-xs space-y-1">
-                            {passwordChecks.map((requirement) => (
-                                <li key={requirement.label} className={requirement.isMet ? 'text-green-600' : 'text-red-500'}>
-                                    {requirement.label}
-                                </li>
-                            ))}
-                        </ul>
+                    <div className="mb-4">
+                        <PasswordRequirements checks={passwordChecks} />
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
@@ -327,3 +341,4 @@ const AccountProfile = () => {
 };
 
 export default AccountProfile;
+ 

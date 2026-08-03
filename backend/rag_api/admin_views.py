@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.utils import timezone
 from django.db import transaction
+from django.db.models import Q
 from .models import (
     AdminUser,
     UserAccount,
@@ -705,6 +706,45 @@ def admin_security_audit_logs_view(request):
             'success': False,
             'message': f'Error creating audit log entry: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@require_admin_only
+def admin_system_logs_view(request):
+    """GET /api/admin/system-logs/ - List system activity and error logs."""
+    limit_param = request.query_params.get('limit', '200')
+    severity = request.query_params.get('severity')
+    outcome = request.query_params.get('outcome')
+    event_type = request.query_params.get('event_type')
+    search = (request.query_params.get('search') or '').strip()
+
+    try:
+        limit = max(1, min(int(limit_param), 1000))
+    except ValueError:
+        limit = 200
+
+    queryset = SecurityAuditLogEntry.objects.all().order_by('-occurred_at', '-updated_at', '-created_at')
+    if severity:
+        queryset = queryset.filter(severity=severity)
+    if outcome:
+        queryset = queryset.filter(outcome=outcome)
+    if event_type:
+        queryset = queryset.filter(event_type=event_type)
+    if search:
+        queryset = queryset.filter(
+            Q(actor_label__icontains=search)
+            | Q(action_summary__icontains=search)
+            | Q(target_label__icontains=search)
+            | Q(notes__icontains=search)
+        )
+
+    records = queryset[:limit]
+    serializer = SecurityAuditLogEntrySerializer(records, many=True)
+    return Response({
+        'success': True,
+        'records': serializer.data,
+        'count': queryset.count(),
+    }, status=status.HTTP_200_OK)
 
 
 @api_view(['GET', 'PATCH', 'DELETE'])

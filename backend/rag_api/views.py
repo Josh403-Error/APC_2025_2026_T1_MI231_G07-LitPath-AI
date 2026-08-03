@@ -5,7 +5,7 @@ from rest_framework.decorators import api_view
 from django.http import StreamingHttpResponse
 from .rag_service import RAGService
 from .serializers import CSMFeedbackSerializer
-from .models import CSMFeedback, CitationCopy, Material, MaterialView, ResearchHistory, SystemSettings
+from .models import CSMFeedback, CitationCopy, Material, MaterialView, ResearchHistory, SystemSettings, UserRole, UserAccount
 from .models_password_reset import PasswordResetToken
 from .password_validation import validate_password_strength
 import secrets
@@ -86,6 +86,8 @@ def insert_to_supabase_general_feedback(data):
     Returns True on success, False on failure.
     """
     try:
+        resolved_client_type = data.get('client_type_other') if (data.get('client_type') == 'Others' and data.get('client_type_other')) else data.get('client_type')
+
         # Get Supabase connection settings from Django settings
         # Check if SUPABASE_URL env var is set for external Supabase
         import os
@@ -127,15 +129,16 @@ def insert_to_supabase_general_feedback(data):
             INSERT INTO general_feedback (
                 user_id, session_id, consent_given, client_type, 
                 date, sex, age, region, category, litpath_rating,
-                research_interests, missing_content, message_comment
+                research_interests, missing_content, message_comment,
+                school_level, school_name, company
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
         """, (
             data.get('user_id'),
             data.get('session_id'),
             data.get('consent_given'),
-            data.get('client_type'),
+            resolved_client_type,
             data.get('date'),
             data.get('sex'),
             data.get('age'),
@@ -144,7 +147,10 @@ def insert_to_supabase_general_feedback(data):
             data.get('litpath_rating'),
             data.get('research_interests'),
             data.get('missing_content'),
-            data.get('message_comment')
+            data.get('message_comment'),
+            data.get('school_level'),
+            data.get('school_name'),
+            data.get('company')
         ))
         
         conn.commit()
@@ -847,13 +853,23 @@ def feedback_detail(request, pk):
 
 # ============= CSM Feedback Views =============
 @api_view(['GET', 'POST'])
-@require_staff_or_admin
 def csm_feedback_view(request):
     """
-    GET: List all CSM feedback (for admin analytics)
-    POST: Submit new CSM feedback
+    GET: List all CSM feedback (for admin analytics) - staff/admin only
+    POST: Submit new CSM feedback - open to all users
     """
     if request.method == 'GET':
+        # Check if user is staff or admin for GET requests
+        user, error_response = get_authenticated_user(request)
+        if error_response:
+            return error_response
+        
+        if user.role not in [UserRole.STAFF, UserRole.ADMIN]:
+            return Response(
+                {'error': 'Unauthorized - admin access required'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         # Optional: filter by user_id for user-specific feedback
         user_id = request.query_params.get('user_id')
         if user_id:
@@ -1759,6 +1775,61 @@ def dashboard_age_distribution(request):
         count = count_dict.get(display, 0)
         data.append({
             'age': display,
+            'count': count,
+            'percentage': round((count / total * 100), 1) if total else 0
+        })
+    return Response(data)
+
+@api_view(['GET'])
+@require_staff_or_admin
+def dashboard_gender_distribution(request):
+    """
+    GET /api/dashboard/gender-distribution/
+    Returns gender distribution and counts from CSMFeedback and UserAccount within the date range.
+    Combines data from both CSM feedback form submissions and user account registrations.
+    """
+    from_date, to_date = parse_date_range(request.GET.get('from'), request.GET.get('to'))
+
+    # Build a dict of gender -> count
+    count_dict = {}
+
+    # Get counts from CSMFeedback database
+    csm_gender_counts = (
+        CSMFeedback.objects
+        .filter(created_at__range=[from_date, to_date], sex__isnull=False)
+        .exclude(sex='')
+        .values('sex')
+        .annotate(count=Count('id'))
+    )
+
+    for item in csm_gender_counts:
+        gender = item['sex']
+        count_dict[gender] = count_dict.get(gender, 0) + item['count']
+
+    # Get counts from UserAccount database (user registrations)
+    user_gender_counts = (
+        UserAccount.objects
+        .filter(created_at__range=[from_date, to_date], sex__isnull=False)
+        .exclude(sex='')
+        .values('sex')
+        .annotate(count=Count('id'))
+    )
+
+    for item in user_gender_counts:
+        gender = item['sex']
+        count_dict[gender] = count_dict.get(gender, 0) + item['count']
+
+    total = sum(count_dict.values()) or 1
+
+    # Define all possible gender options in order
+    gender_options = ['Female', 'Male', 'Prefer not to say']
+
+    # Build result for all gender options
+    data = []
+    for gender in gender_options:
+        count = count_dict.get(gender, 0)
+        data.append({
+            'gender': gender,
             'count': count,
             'percentage': round((count / total * 100), 1) if total else 0
         })

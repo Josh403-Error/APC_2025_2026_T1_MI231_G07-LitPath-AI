@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import dostLogo from "../assets/images/dost-logo.png";
 import { API_BASE_URL } from '../services/api';
 import { getPasswordRequirementChecks, validatePasswordStrength } from '../lib/passwordValidation';
+import PasswordRequirements from '../components/PasswordRequirements';
 
 const ResetPassword = () => {
   const { token } = useParams();
@@ -84,15 +85,8 @@ const ResetPassword = () => {
                 placeholder="Re-enter new password"
               />
             </div>
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <p className="text-xs font-semibold text-gray-700 mb-1">Password requirements:</p>
-              <ul className="list-disc list-inside text-xs space-y-1">
-                {passwordChecks.map((requirement) => (
-                  <li key={requirement.label} className={requirement.isMet ? 'text-green-600' : 'text-red-500'}>
-                    {requirement.label}
-                  </li>
-                ))}
-              </ul>
+            <div className="mb-3">
+              <PasswordRequirements checks={passwordChecks} />
             </div>
             <button
               type="submit"

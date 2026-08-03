@@ -8,7 +8,7 @@ from . views import (
     get_most_browsed, dashboard_top_theses, get_source_ratings, get_material_rating_detail, get_sources_stats, 
     csm_feedback_view, csm_feedback_detail, 
     dashboard_kpi, dashboard_trending_topics, dashboard_failed_queries_count, dashboard_failed_queries_details,
-    dashboard_usage_by_category, dashboard_age_distribution, 
+    dashboard_usage_by_category, dashboard_age_distribution, dashboard_gender_distribution, 
     dashboard_monthly_trends, dashboard_weekly_trends, dashboard_daily_trends,
     track_citation_copy, dashboard_citation_stats, dashboard_citation_monthly, dashboard_citation_weekly, dashboard_citation_daily,
     dashboard_least_browsed, dashboard_dormant_count
@@ -30,6 +30,7 @@ from . admin_views import (
     admin_security_access_rule_detail_view,
     admin_security_audit_logs_view,
     admin_security_audit_log_detail_view,
+    admin_system_logs_view,
 )
 from . auth_views import (
     auth_login_view, auth_register_view, auth_guest_session_view,
@@ -128,6 +129,8 @@ urlpatterns = [
     path('admin/security-audit-logs/', admin_security_audit_logs_view, name='admin-security-audit-logs'),
     path('admin/security-audit-logs', admin_security_audit_logs_view, name='admin-security-audit-logs-no-slash'),
     path('admin/security-audit-logs/<int:log_id>/', admin_security_audit_log_detail_view, name='admin-security-audit-log-detail'),
+    path('admin/system-logs/', admin_system_logs_view, name='admin-system-logs'),
+    path('admin/system-logs', admin_system_logs_view, name='admin-system-logs-no-slash'),
 
     # Material Views (Most Browsed)
     path('track-view/', views.track_material_view, name='track_material_view'),
@@ -162,6 +165,8 @@ urlpatterns = [
     path('dashboard/usage-by-category', dashboard_usage_by_category, name='dashboard-usage-category-no-slash'),
     path('dashboard/age-distribution/', dashboard_age_distribution, name='dashboard-age-distribution'),
     path('dashboard/age-distribution', dashboard_age_distribution, name='dashboard-age-distribution-no-slash'),
+    path('dashboard/gender-distribution/', dashboard_gender_distribution, name='dashboard-gender-distribution'),
+    path('dashboard/gender-distribution', dashboard_gender_distribution, name='dashboard-gender-distribution-no-slash'),
     path('dashboard/monthly-trends/', dashboard_monthly_trends, name='dashboard-monthly-trends'),
     path('dashboard/monthly-trends', dashboard_monthly_trends, name='dashboard-monthly-trends-no-slash'),
     path('dashboard/weekly-trends/', dashboard_weekly_trends, name='dashboard-weekly-trends'),

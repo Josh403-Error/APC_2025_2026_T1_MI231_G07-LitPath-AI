@@ -26,6 +26,7 @@ interface RegisterPayload {
     school_level: string;
     school_name: string;
     client_type: string;
+    client_type_other?: string;
     sex: string;
     age: string;
     region: string;
@@ -90,8 +91,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [loading, setLoading] = useState(true);
     const [isGuest, setIsGuest] = useState(false);
     const [showInactivityWarning, setShowInactivityWarning] = useState(false);
-    const logoutTimerRef = useRef(null);
-    const warningTimerRef = useRef(null);
+    const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const INACTIVITY_LIMIT = 10 * 60 * 1000; // 10 min
     const WARNING_TIME = 30 * 1000; // 30 sec
 
@@ -133,7 +134,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     // Validate session with backend
-    const validateSession = async (sessionId) => {
+    const validateSession = async (sessionId: string | number) => {
         try {
             const response = await fetch(`${API_BASE_URL}/auth/validate-session/`, {
                 method: 'POST',
@@ -149,7 +150,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     // Login with email and password
-    const login = async (email, password) => {
+    const login = async (email: string, password: string) => {
         try {
             const response = await fetch(`${API_BASE_URL}/auth/login/`, {
                 method: 'POST',
@@ -350,7 +351,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     // Start new chat (for guests - clears localStorage data)
-    const startNewChat = useCallback(async () => {
+    const startNewChat = useCallback(async (): Promise<AuthResult> => {
         if (isGuest) {
             // Clear all guest localStorage data for privacy on public devices
             clearGuestLocalStorage();
@@ -360,7 +361,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
         
         // For authenticated users, just clear conversation but keep account
-        return { success: true, user };
+        return { success: true, user: user || undefined };
     }, [isGuest, session, user]);
 
     // Clear guest localStorage helper
@@ -401,12 +402,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }, [user]);
 
     // Check if user is authenticated (not guest)
-    const isAuthenticated = useCallback(() => {
-        return user && user.role !== USER_ROLES.GUEST;
+    const isAuthenticated = useCallback((): boolean => {
+        return !!(user && user.role !== USER_ROLES.GUEST);
     }, [user]);
 
     // Check if user has specific role
-    const hasRole = useCallback((role) => {
+    const hasRole = useCallback((role: string) => {
         return user?.role === role;
     }, [user]);
 
@@ -420,7 +421,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }, [user]);
 
     // Change password
-    const changePassword = async (currentPassword, newPassword) => {
+    const changePassword = async (currentPassword: string, newPassword: string) => {
         if (!user || isGuest) {
             return { success: false, error: 'Must be logged in to change password' };
         }
@@ -445,7 +446,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     // Delete account
-    const deleteAccount = async (password) => {
+    const deleteAccount = async (password: string) => {
         if (!user || isGuest) {
             return { success: false, error: 'Must be logged in to delete account' };
         }
@@ -527,15 +528,57 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         };
     }, [user]);
 
+    const inactivityStyles = `
+        .inactivity-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.3);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .inactivity-modal {
+            background: #fff;
+            padding: 32px;
+            border-radius: 12px;
+            box-shadow: 0 2px 16px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 320px;
+        }
+        .inactivity-modal h2 {
+            font-weight: bold;
+            font-size: 22px;
+            margin-bottom: 12px;
+        }
+        .inactivity-modal p {
+            margin-bottom: 16px;
+        }
+        .inactivity-modal button {
+            background: #2563eb;
+            color: #fff;
+            padding: 8px 20px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    `;
+
     return (
         <AuthContext.Provider value={value}>
+            <style>{inactivityStyles}</style>
             {children}
             {showInactivityWarning && (
-                <div style={{position:'fixed',top:0,left:0,width:'100vw',height:'100vh',background:'rgba(0,0,0,0.3)',zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center'}}>
-                    <div style={{background:'#fff',padding:32,borderRadius:12,boxShadow:'0 2px 16px #0002',textAlign:'center',maxWidth:320}}>
-                        <h2 style={{fontWeight:'bold',fontSize:22,marginBottom:12}}>Inactivity Warning</h2>
-                        <p style={{marginBottom:16}}>You will be logged out in 30 seconds due to inactivity.</p>
-                        <button onClick={()=>setShowInactivityWarning(false)} style={{background:'#2563eb',color:'#fff',padding:'8px 20px',border:'none',borderRadius:6,fontWeight:'bold',fontSize:16,cursor:'pointer'}}>Stay Logged In</button>
+                <div className="inactivity-overlay">
+                    <div className="inactivity-modal">
+                        <h2>Inactivity Warning</h2>
+                        <p>You will be logged out in 30 seconds due to inactivity.</p>
+                        <button onClick={()=>setShowInactivityWarning(false)}>Stay Logged In</button>
                     </div>
                 </div>
             )}

@@ -1,4 +1,4 @@
-from django.db import models
+﻿from django.db import models
 from django.utils import timezone
 from datetime import timedelta
 import uuid
@@ -434,6 +434,8 @@ class SecurityAuditLogEntry(models.Model):
     """Stores security audit events for authentication and access control reviews."""
 
     EVENT_TYPE_CHOICES = [
+        ('activity', 'Activity'),
+        ('error', 'Error'),
         ('login_success', 'Login success'),
         ('login_failure', 'Login failure'),
         ('role_change', 'Role change'),
@@ -641,6 +643,7 @@ class CSMFeedback(models.Model):
         ('Teaching Personnel', 'Teaching Personnel'),
         ('Administrative Personnel', 'Administrative Personnel'),
         ('Researcher', 'Researcher'),
+        ('Others', 'Others'),
     ]
     
     # Sex choices
@@ -684,6 +687,7 @@ class CSMFeedback(models.Model):
         ('R11', '[R11] Davao Region'),
         ('R12', '[R12] SOCCSKSARGEN Region'),
         ('R13', '[R13] Caraga Administrative Region'),
+        ('R18', '[R18] Negros Island Region (NIR)'),
         ('BARMM', '[BARMM] Bangsamoro Autonomous Region in Muslim Mindanao'),
         ('N/A', '[N/A] Not Applicable (Overseas)'),
     ]
@@ -722,6 +726,16 @@ class CSMFeedback(models.Model):
     age = models.CharField(max_length=50, choices=AGE_CHOICES)
     region = models.CharField(max_length=50, choices=REGION_CHOICES)
     category = models.CharField(max_length=100, choices=CATEGORY_CHOICES, blank=True, null=True)
+    
+    # Conditional fields for client type
+    school_level = models.CharField(max_length=100, blank=True, null=True, 
+        help_text="For Student client type")
+    school_name = models.CharField(max_length=255, blank=True, null=True,
+        help_text="For Student client type")
+    client_type_other = models.CharField(max_length=255, blank=True, null=True,
+        help_text="Required when client type is Others")
+    company = models.CharField(max_length=255, blank=True, null=True,
+        help_text="Optional organization or affiliation")
     
     # III. Feedback & Evaluation
     litpath_rating = models.IntegerField(choices=RATING_CHOICES, blank=True, null=True)
