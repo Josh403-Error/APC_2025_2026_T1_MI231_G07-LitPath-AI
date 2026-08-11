@@ -17,14 +17,32 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from django.http import JsonResponse
-
+from django.views.generic import TemplateView
+import os
+from django.conf import settings
+from django.http import HttpResponse
 
 def health_check(request):
     return JsonResponse({"status": "ok"})
 
+# View to serve the built React app's index.html
+def serve_react_app(request, route=''):
+    # Define the path to the built index.html
+    index_path = os.path.join(settings.STATIC_ROOT or os.path.join(settings.BASE_DIR, 'staticfiles'), 'index.html')
+    try:
+        with open(index_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        return HttpResponse(content, content_type='text/html')
+    except FileNotFoundError:
+        return HttpResponse("Frontend application not found. Please build the frontend.", status=500)
 
 urlpatterns = [
-    path('', health_check, name='health'),
+    # path('', health_check, name='health'),  # Removed to allow React app to serve at root
     path('admin/', admin.site.urls),
     path('api/', include('rag_api.urls')),
+    # Serve the React app for root and search paths
+    path('', serve_react_app, name='home'),
+    path('search/', serve_react_app, name='search'),
+    # Catch-all for other frontend routes handled by React Router
+    path('<path:route>/', serve_react_app, name='frontend_routes'),
 ]

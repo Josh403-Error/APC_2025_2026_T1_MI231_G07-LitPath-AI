@@ -18,7 +18,10 @@ function resolveApiBaseUrl(): string {
     const configured = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL as string | undefined);
     if (configured) return configured;
 
-    return 'http://localhost:8000/api';
+    // Removed hardcoded fallback to localhost for Tailscale deployment.
+    // In a Tailscale setup, VITE_API_BASE_URL must be set correctly.
+    console.error("FATAL ERROR: VITE_API_BASE_URL is not set correctly in the environment.");
+    return 'http://127.0.0.1:8080/api'; // Updated fallback to match the current backend server
 }
 
 export const API_BASE_URL = resolveApiBaseUrl();
