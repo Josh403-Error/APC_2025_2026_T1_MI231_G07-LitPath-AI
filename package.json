@@ -1,8 +1,8 @@
 {
   "dependencies": {
-    "@supabase/supabase-js": "^2.102.1",
+    "@supabase/supabase-js": "^2.112.2",
     "chart.js": "^4.5.1",
-    "jspdf-autotable": "^5.0.7",
+    "jspdf-autotable": "^5.0.8",
     "react-chartjs-2": "^5.3.1"
   }
 }

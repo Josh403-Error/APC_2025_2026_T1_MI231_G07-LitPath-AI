@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: litpath_ai
+      POSTGRES_USER: litpath_user
+      POSTGRES_PASSWORD: litpath_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litpath_user -d litpath_ai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Removed DJANGO_SETTINGS_MODULE override
+      - DB_HOST=db
+      - DB_NAME=litpath_ai
+      - DB_USER=litpath_user
+      - DB_PASSWORD=litpath_pass
+      - DB_PORT=5432
+    networks:
+      - app-network
+    expose:
+      - "8000"
+    command: >
+      sh -c "
+        python manage.py migrate --no-input &&
+        gunicorn litpath_backend.wsgi:application --bind 0.0.0.0:8000
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"] # Changed to check root path
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        - VITE_API_BASE_URL=/api # Explicitly set the API base URL for the build
+    depends_on:
+      - backend
+    networks:
+      - app-network
+    ports:
+      - "5175:80"
+    # No command override needed
+
+volumes:
+  postgres_data:
+
+networks:
+  app-network:
+    driver: bridge

@@ -40,6 +40,8 @@ ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(','
 if '.railway.app' not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append('.railway.app')
 
+# Add Tailscale IP to allowed hosts
+ALLOWED_HOSTS.extend(['100.122.16.91'])
 
 # Application definition
 
@@ -176,6 +178,10 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+# Add the Vite build output directory to STATICFILES_DIRS
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR.parent, 'frontend', 'dist'),
+]
 STORAGES = {
     'staticfiles': {
         'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
@@ -192,7 +198,7 @@ CORS_ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.environ.get(
         'CORS_ALLOWED_ORIGINS',
-        'http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000'
+        'http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000,http://100.122.16.91:5173'
     ).split(',')
 ]
 
@@ -200,7 +206,7 @@ CSRF_TRUSTED_ORIGINS = [
     origin.strip()
     for origin in os.environ.get(
         'CSRF_TRUSTED_ORIGINS',
-        'http://localhost:5173,http://localhost:3000'
+        'http://localhost:5173,http://localhost:3000,http://100.122.16.91:5173'
     ).split(',')
 ]
 

@@ -29,6 +29,7 @@ const LitPathAI = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [backendStatus, setBackendStatus] = useState(null);
+    const [backendStatusChecked, setBackendStatusChecked] = useState(false); // New state to track if the check has been performed
     const [showCitationOverlay, setShowCitationOverlay] = useState(false);
     const [showSavedItems, setShowSavedItems] = useState(false);
     const [bookmarkedCount, setBookmarkedCount] = useState(0);
@@ -758,16 +759,33 @@ const LitPathAI = () => {
 
     const checkBackendHealth = async () => {
         try {
-            const response = await fetch(`${API_BASE_URL}/health`);
+            const response = await fetch(`${API_BASE_URL}/health`, {
+                method: 'GET',
+                credentials: 'omit', // Explicitly state we don't need credentials for this check
+                mode: 'cors' // Explicitly state this is a cross-origin request
+            });
             if (response.ok) {
-                const data = await response.json();
-                setBackendStatus(data);
+                try {
+                    const data = await response.json();
+                    // Ensure data has the expected structure
+                    if (typeof data === 'object' && data !== null) {
+                        setBackendStatus(data);
+                    } else {
+                        console.error("Backend health check response was not a JSON object:", data);
+                        setBackendStatus({ status: 'error', message: 'Invalid backend health response' });
+                    }
+                } catch (parseErr) {
+                    console.error("Failed to parse backend health response JSON:", parseErr);
+                    setBackendStatus({ status: 'error', message: 'Invalid backend health response format' });
+                }
             } else {
                 setBackendStatus({ status: 'error', message: 'Backend not responding' });
             }
         } catch (err) {
             console.error("Backend health check failed:", err);
             setBackendStatus({ status: 'error', message: 'Cannot connect to backend' });
+        } finally {
+            setBackendStatusChecked(true); // Mark the check as completed, regardless of success or failure
         }
     };
 
@@ -777,7 +795,8 @@ const handleSearch = async (query = searchQuery, forceNew = false) => {
             setError("Please enter a research question.");
             return;
         }
-        if (!backendStatus || backendStatus.status === 'error') {
+        // Wait for the initial check to complete before checking status
+        if (!backendStatusChecked || !backendStatus || backendStatus.status === 'error') {
             setError("Backend service is not available. Please check if the server is running.");
             return;
         }
